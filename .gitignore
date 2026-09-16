@@ -1,0 +1,77 @@
+# ============================================================================
+# ProbCrew v2 · 忽略规则
+# ----------------------------------------------------------------------------
+# 三条原则，按重要性排序：
+#   1. L2 敏感数据在**结构上不可能**入库（不是"小心别提交"）
+#   2. L1 教材语料与模型权重体积大且仅校内，绝不入库
+#   3. 生成物**必须入库**（否则 clone 后不跑脚本就打不开），因此不在此列
+# ============================================================================
+
+# ===== 密钥与本地配置 =====
+.env
+.env.local
+*.local
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+
+# ===== ★ L2 敏感数据：学生作答 / 问答原文 / 账号 / 令牌 / 审计 =====
+# 只忽略 *.sqlite 是不够的 —— 迁移备份（*.sqlite.bak-<时间戳>）、
+# WAL/SHM 附属文件里装的是**同一份学生数据**，漏一条等于漏一处。
+backend/data/*.sqlite
+backend/data/*.sqlite-*
+backend/data/*.sqlite.*
+backend/data/*.db
+backend/data/*.db-*
+backend/data/*.db.*
+# 兜底：任何备份后缀
+backend/data/*.bak
+backend/data/*.bak-*
+
+# ===== 检索模型权重（BGE-M3 等，数 GB）=====
+models/
+*.safetensors
+*.onnx
+
+# ===== ★ L1 教材语料（仅校内，绝不进公开仓库）=====
+# 目录只保留 .gitkeep，其余一律忽略 —— 否则"绝不进仓库"就是一句空话。
+backend/data/corpus/*
+!backend/data/corpus/.gitkeep
+
+# ===== 题目库（不敏感，**必须入库**）=====
+# 批改闭环的依据是"已核验的标准答案"，题库就是这份依据，要能随代码分发。
+# 注意：这里放的是**自编题**；真实考试题属 L1，不入库。
+!backend/data/question_bank/
+!backend/data/question_bank/*.json
+
+# ===== 前端 =====
+node_modules/
+dist/
+build/
+
+# 说明：frontend/vendor/katex/fonts/ 约 1.5MB，**保留**（保证离线公式渲染）。
+
+# ===== 编辑器 / 系统 =====
+.vscode/*
+!.vscode/settings.json.example
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== 大体积素材（教材原始文件，注意版权）=====
+*.pdf
+!docs/**/*.pdf
+
+# ===== 临时文件 =====
+*.tmp
+.git-commit-msg.tmp
+.draft-*.md
+
+# ===== 会话交接文档（不属于项目文档）=====
+docs/*交接*.md
+docs/*handover*.md
