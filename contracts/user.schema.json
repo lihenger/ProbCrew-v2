@@ -3,7 +3,7 @@
   "$id": "https://probcrew.local/contracts/user.schema.json",
   "title": "账号（Account）",
   "description": "登录账号的对外视图。**任何接口都不得返回 password_hash** —— 本契约用 additionalProperties:false 把这条钉死：往响应里加字段会直接违反契约。账号是权限的唯一来源（服务端 identity/），前端藏菜单不算权限。★ 本文件**搬运自旧仓 `contracts/user.schema.json`**（ADR-0003 决策 1 指定的唯一搬运契约），**形状逐字保留**，只做「只增不改」允许的增量 —— 增量清单见 `x-v2-deviations`。",
-  "version": "v1.1",
+  "version": "v1.2",
   "type": "object",
   "additionalProperties": false,
   "required": ["user_id", "username", "display_name", "role", "status", "created_at"],
@@ -119,8 +119,8 @@
     "noticeStatus": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ask", "egress", "provider", "model", "payload_fields", "ack_at"],
-      "description": "`GET /api/me/notice` 的响应：**这次要不要告知，以及告知什么**。★ 本形状把 N15 的三项内容做成**数据驱动的**（去向 · 载荷范围 · 是否已确认），因此「告知文案随去向变化」不需要三套硬编码文案。★ **判据是去向（`egress`），不是部署形态**：单机形态包含 P2（单机 + 远程端点），按形态判会让这台机器上的学生看到「数据不发往第三方」，而提问正文**正在**发往第三方。",
+      "required": ["ask", "egress", "provider", "model", "payload_fields", "message", "ack_at"],
+      "description": "`GET /api/me/notice` 的响应：**这次要不要告知，以及告知什么**。★ 本形状把 N15 的三项内容做成**数据驱动的**（去向 · 载荷范围 · 是否已确认），因此「告知文案随去向变化」**不需要三套硬编码文案** —— 文案由**服务端一处组合**写进 `message`，前端只负责渲染（**R-I**）。★ **判据是去向（`egress`），不是部署形态**：单机形态包含 P2（单机 + 远程端点），按形态判会让这台机器上的学生看到「数据不发往第三方」，而提问正文**正在**发往第三方。",
       "properties": {
         "ask": {
           "type": "boolean",
@@ -155,6 +155,12 @@
             "maxLength": 64
           },
           "description": "★ **载荷范围**（N15 要求告知的内容之一）。由服务端按 `docs/02 §1.5④` 的**正向白名单**给出（提问原文 · 上下文 · 系统提示 · L0 资产片段），**不含凭据**（凭据是请求头，不是载荷 —— R-M 第 ⑦ 面）。做成数组而不是一句话，是为了让它可被断言（N16 验收③ 用假 provider 抓载荷比对）。"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 512,
+          "must_render": true,
+          "description": "★ **N15「显著告知」的渲染载体**，也是 **R-I**（`docs/02 §1.6`）在本契约的落点：**前端必须把这个字符串渲染出来**（冒烟断言该文本出现在 DOM 里）。★ **为什么是「组合好的字符串」而不是让前端拼**：R-I 的断言对象必须是**显示字符串** —— 枚举 / 布尔字段标了**无法被 DOM 断言**（同 `verification` 的 `levelLabel` 之于 `level`）。★ **值由服务端按 `docs/02 §1.5①` 的判据组合**：`egress = remote` ⇒ 「提问会发送到第三方模型服务」+ **供应商名** + **载荷范围**；`egress ≠ remote`（`loopback` / `null`）⇒ 「数据不发往第三方」。★ **必须含 N15 的三项内容**（实际去向 · 载荷范围 · **删除权边界句**）—— 「边界句与告知**同屏**」是 N15 的组成项，做成一个字段是保证同屏最省事的方式，也让前端**零硬编码文案**。"
         },
         "ack_at": {
           "type": ["number", "null"],
@@ -406,13 +412,20 @@
       "definitions.noticeStatus / noticeAckRequest（N15 告知的读写形状）",
       "definitions.deleteResult（F16 的四类处置 + 两条边界）",
       "definitions.adminUserRow / adminPasswordResetResult / adminImportRequest / adminImportResult（账号管理）",
-      "username 的复用规则写进 description（口径澄清，非语义变更）"
+      "username 的复用规则写进 description（口径澄清，非语义变更）",
+      "★ v1.2：noticeStatus.message（N15 告知文案的**显示字段**，标 must_render —— R-I 的落点）"
     ],
     "not_used_in_v2": [
       "user_id 取值 usr_history —— v2 不迁旧数据",
       "created_by 取值 'migration' —— 同上"
     ],
-    "rationale": "★ 为何不删除上面两个取值：契约是**只增不改**的（改字段名 / 删枚举值属破坏性变更，须走 ADR）。但**保留形状不等于保留谎言** —— 因此两个取值的 description 都明确写了「v2 恒不出现」，避免读者以为存在历史账号。"
+    "rationale": "★ 为何不删除上面两个取值：契约是**只增不改**的（改字段名 / 删枚举值属破坏性变更，须走 ADR）。但**保留形状不等于保留谎言** —— 因此两个取值的 description 都明确写了「v2 恒不出现」，避免读者以为存在历史账号。",
+    "increment_v1_2": {
+      "changed": "新增 `noticeStatus.message`（必填 · `must_render: true`），本文件 version 提到 v1.2",
+      "why": "★ **R-I 的落点此前是空的**：`docs/02 §10` 的 N15 行写着「渲染（R-I `must_render`）」，而本契约里**没有任何 `must_render` 标记** —— 前端冒烟测试**无从断言**。N15 是 **MUST**（「必须显著告知」），不能只靠自觉。",
+      "required_field_evaluation": "★ `docs/04 §5` 把「给已有对象**新增必填字段**」列为 ⚠️ 需评估。**评估结论：v2 尚未发布，不存在已发布客户端**，故可直接设为必填；若已有发布客户端，须先可选 + 双写一段时间再收紧。",
+      "compat": "新增字段本身属兼容变更；本文件既有字段名与取值集合**一律未动**（「只增不改」）。`noticeStatus` 的其余字段（`egress` / `provider` / `model` / `payload_fields`）**全部保留** —— N16 验收③ 仍要靠 `payload_fields` 抓载荷比对。"
+    }
   },
   "examples": [
     {
