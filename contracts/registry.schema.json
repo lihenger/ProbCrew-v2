@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/registry.schema.json",
+  "title": "编排注册与运行时自检（Registry & Health）",
+  "description": "① **节点 / 工具的注册规格** —— 它是 **R-Q（工具调用边界）** 的机器可读落点，也是 `docs/03 §7①` 裁定的「**显式注册 + 启动校验**」的形状；② **`GET /api/health` 的自检响应**。★ 两者同处一份契约，因为它们回答的是同一个问题：**「这个进程现在到底是由什么构成的、它自己觉得健不健康」**。★ 本文件是**本轮裁定新增**的第 14 份契约（`ADR-0003` 决策 7 当时写的是 13 份 —— 见 `docs/04 §9` 缺口 3）。",
+  "version": "v1.0",
+  "oneOf": [
+    {
+      "title": "注册表（graph/registry）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "description": "图节点的显式登记。★ **「显式」是裁定，不是风格**（`docs/03 §7①`）：旧仓靠扫描目录做自动发现（`kernel/registry.py`），结果是**名字冲突与漏注册只在运行时暴露**，且「到底注册了什么」无法 grep。★ 本表另有一条纪律：**启动时必须能导出「已注册清单」** —— 于是「谁被注册了」变成可断言的事实。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "entry", "tools"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "maxLength": 64,
+                "description": "注册名（同时是事件里的 `node` 字段取值）。★ **重复即启动报错退出**（见 `x-startup-checks`）。"
+              },
+              "entry": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "入口函数（如 `graph.nodes.solve:run`）。★ **不存在或签名不符即启动报错退出**。"
+              },
+              "tools": {
+                "type": "array",
+                "minItems": 1,
+                "description": "★ **该节点允许调用的工具集合 —— 这是 R-Q ① 的结构化形式，不是一句纪律**。★ **空数组不行、`null` 不行、通配符不行**（`pattern` 不允许 `*`）：旧仓 `RunContext.use()` 写死 `allowed=None`，于是任何 Agent 都能调它没声明的工具（`docs/03 §9.2` 第 7 行那条债）。★ **允许集合必须是非空的显式清单** —— 「这个节点什么都不调用」用别的方式表达，不要用空集合冒充。",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "maxLength": 64
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "健康自检（GET /api/health）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "db", "corpus", "asset_rev"],
+      "description": "★ **只报告本地事实**（DB · L1 缓存 · 资产 `rev`）。★ 它是**唯一无需登录的 API**，因此它**不得泄露任何与用户有关的信息** —— 三个字段全部是「这个进程自己的状态」。",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "degraded"],
+          "description": "`degraded` = 有一项本地依赖不健康（见下面三项），**不是**「用户态错误」。★ 它**不表示模型端点不可达** —— 那需要一次出网调用，见 `x-forbidden-fields`。"
+        },
+        "db": {
+          "type": "string",
+          "enum": ["ok", "error"],
+          "description": "L2 库可读写。★ WAL 与 `busy_timeout` 生效性属实现细节，此处只报结果。"
+        },
+        "corpus": {
+          "type": "string",
+          "enum": ["ok", "missing"],
+          "description": "L1 语料缓存是否可用。★ `missing` 时答疑**照常可用**，只是教材出处会如实返回「出处暂不可用」（F10 · `docs/02 §8-13b`）—— 因此它是 `degraded` 而不是错误。"
+        },
+        "asset_rev": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{12}$",
+          "description": "当前 `content_rev`（12 位十六进制，算法见 `content.schema.json` 的 `x-content-rev`）；资产未加载成功时为 `null`。★ 它在 health 里出现是为了排障：**「这一版跑的是哪一版内容」是复现问题的第一个问题**。"
+        }
+      }
+    }
+  ],
+  "x-startup-checks": {
+    "description": "★ 启动校验（`docs/03 §7①`）—— 坏就**报错退出**，与 `docs/02 §8-14`（内容资产加载失败）同一模式。**不检测**的后果旧仓已经付过：把「只允许单 worker」写在文档里而代码不检测，于是多开一个 worker 就表现为「随机丢 run / 事件串台」，看起来像前端 bug。",
+    "checks": [
+      "注册名重复 ⇒ 报错退出",
+      "★ tools 为空数组、为 null、或含通配符 ⇒ 报错退出（R-Q ①）",
+      "entry 不存在或签名不符 ⇒ 报错退出",
+      "启动时打印 / 导出「已注册清单」⇒ 可 grep、可断言",
+      "并发度 > 1 ⇒ 拒绝启动并说明原因（docs/02 §8-15）"
+    ]
+  },
+  "x-forbidden-fields": {
+    "description": "★ `GET /api/health` **不得包含**的字段。这不是风格问题，是三条硬约束的交点。",
+    "forbidden": ["model", "model_status", "model_endpoint", "upstream", "llm"],
+    "why": "① 「模型状态」需要**一次出网调用**，而 `docs/02 §1.5③` 规定运行期**恰好两个出网口**且 health 不在其中；② 它会破坏 `docs/02 §8-7` 的「判定压测时 health 必须仍 < 100ms」；③ N14 下**不存在部署级端点**，health 根本无从知道任何用户的模型状态 —— 报它只能靠猜。★ 原措辞曾写 health「报告 DB / 模型 / 检索状态」，2026-09-16 已修正。"
+  },
+  "examples": [
+    {
+      "nodes": [
+        {
+          "name": "route",
+          "entry": "graph.nodes.route:run",
+          "tools": [
+            "intent_classify"
+          ]
+        },
+        {
+          "name": "solve",
+          "entry": "graph.nodes.solve:run",
+          "tools": [
+            "kb_search",
+            "formula_lookup"
+          ]
+        },
+        {
+          "name": "verify",
+          "entry": "graph.nodes.verify:run",
+          "tools": [
+            "sympy_recompute"
+          ]
+        }
+      ]
+    },
+    {
+      "status": "ok",
+      "db": "ok",
+      "corpus": "ok",
+      "asset_rev": "9c1f4a77b2e0"
+    }
+  ]
+}

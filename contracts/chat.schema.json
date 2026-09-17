@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/chat.schema.json",
+  "title": "答疑与模型端点（Chat · API 视图）",
+  "description": "`POST /api/chat` 的请求体、`GET /api/model/providers` 与 `POST /api/model/ping` 的响应，以及**端点信任边界**（`ADR-0005 §4`）在契约层的落点。★ **响应体不在这里**：答疑的回答走 **SSE 事件流**（`events.schema.json` 的 14 类），因为 `EventSource` 不能带自定义头、而凭据必须走请求头 ⇒ 只能 `POST + fetch 流`（`docs/02 §4.2.1`）。★ **凭据只有一个入口**：请求头 `X-Model-Key`。**它不进本文件的任何字段** —— 那是 R-M 第 ⑦ 面「凭据不得出现在 body 或 query」的结构化形式（本契约里**没有**放凭据的地方）。",
+  "version": "v1.0",
+  "oneOf": [
+    {
+      "title": "答疑请求（POST /api/chat）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "endpoint"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "提问原文（上界与 `docs/02 §6.1` 的 R-A 表一致，超长直接 400 `invalid_argument`）。"
+        },
+        "context": {
+          "$ref": "events.schema.json#/definitions/contextResolvedPayload/properties/context",
+          "description": "★ **可缺省**（F1）—— 这里的形状与 `events.schema.json` 的 `context.resolved` 事件里的**同一个 `$ref`**：输入的形状与回显的形状**必须同构**，否则前端无法核对「我给的上下文被理解成了什么」。★ 缺省时接口必须**显式降级**（回 `context.resolved` 且 `context: null` + `reason`），不得静默。"
+        },
+        "endpoint": {
+          "$ref": "#/definitions/endpoint",
+          "description": "★ **模型端点由用户提供**（N14），因此每次请求都要带上它 —— **不存在部署级共享端点**。★ 它**不是秘密**（`provider`/`model`/`base_url` 都可公开），所以放 body；**唯一的秘密是请求头里的凭据**。这个分工是有意的：一个秘密、一个入口（见本文件顶部的说明）。"
+        }
+      }
+    },
+    {
+      "title": "预置供应商（GET /api/model/providers）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providers"],
+      "properties": {
+        "providers": {
+          "type": "array",
+          "minItems": 1,
+          "description": "预置供应商 + 自定义 OpenAI 兼容端点。★ 客户端据此渲染设置页的下拉框 —— **不得在前端硬编码这份清单**（否则加一个供应商要改两处）。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["provider", "label", "requires_key"],
+            "properties": {
+              "provider": {
+                "$ref": "#/definitions/providerId"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "给人看的名字（会出现在告知文案的「实际去向」里）。"
+              },
+              "default_base_url": {
+                "type": ["string", "null"],
+                "maxLength": 2048,
+                "description": "默认端点地址；`custom` 为 `null`（必须由用户填）。"
+              },
+              "requires_key": {
+                "type": "boolean",
+                "description": "是否必须提供凭据。★ `custom` 指向本机模型时可以不需要 key（P1）—— 此时请求头 `X-Model-Key` **允许为空串**（不是缺失，见 `x-invariants`）。"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "凭据自检（POST /api/model/ping）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "latency_ms"],
+      "description": "★ 它存在的理由只有一个：**避免「填错 key 之后每次答疑都失败」**（`docs/02 §6.1`）。★ **它必须与 `/api/chat` 共用同一个端点校验函数** —— 否则「用 ping 过校验、再直接调 chat」就是一条现成的旁路（`ADR-0005 §4`）。",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "失败时给人看的一句说明。★ **不得回显解析到的 IP、不得回显内部错误** —— 把「这个地址被拒绝」与「这个地址不可达」对外合并，避免把内网探测结果回吐给用户。"
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "providerId": {
+      "type": "string",
+      "enum": ["deepseek", "qwen", "glm", "custom"],
+      "description": "★ 预置供应商白名单（`docs/02 §4.2.1`）+ `custom`（自定义 OpenAI 兼容端点）。★ 与 `docs/02 §6.1` 的 R-A 表里 `provider` 字段的枚举**必须一致**（新增供应商 = 两边同时加，属兼容变更）。"
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "base_url"],
+      "description": "★ **端点信任边界的输入面**（`ADR-0005 §4` · `docs/02 §4.2.1`）。服务端会向这个 `base_url` 发起请求，因此**它是一个真实的 SSRF 面** —— 六条规则里能在契约层表达的部分写在 `base_url` 的 `anyOf` 上，表达不了的部分（私网段、重定向、超时）写在 `x-invariants`。",
+      "properties": {
+        "provider": {
+          "$ref": "#/definitions/providerId"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "模型名。★ 它会拼进上游请求的 body，因此**不得含控制字符**（`x-invariants`）。"
+        },
+        "base_url": {
+          "type": "string",
+          "maxLength": 2048,
+          "description": "★ 强制 `https`，**唯一的例外是本机端点**（`http://127.0.0.1[:port]` / `http://localhost[:port]`），且该例外**仅在单机形态下、由部署者显式勾选后才生效**（与 N18 的「单机允许 http」**共用同一开关**）。★ `anyOf` 只表达「形如 https 或形如本机 loopback」—— **它挡不住私网段与云元数据地址**，那两条必须由服务端校验（见 `x-invariants`）。",
+          "anyOf": [
+            {
+              "pattern": "^https://"
+            },
+            {
+              "pattern": "^http://(127\\.0\\.0\\.1|localhost)(:[0-9]{1,5})?(/[^\\s]*)?$"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "x-invariants": {
+    "description": "★ draft-07 表达不了的安全与协议纪律，写成机器可读断言说明，由服务端校验函数与 `docs/04 §7` 的校验实现执行。**`/api/chat` 与 `/api/model/ping` 必须共用同一个校验函数** —— 这是本节第一条。",
+    "rules": [
+      "端点校验函数唯一：ping 与 chat 共用（否则存在旁路）",
+      "base_url 必须禁 RFC1918（10/8 · 172.16/12 · 192.168/16）与 169.254.169.254 等内网与云元数据地址 —— **只挡 loopback 不够**",
+      "禁止跟随重定向：校验的是第一个 URL，若允许 302，前两条规则都可被绕过",
+      "连接 / 读取超时与响应体最大字节必须有上界（用户可控的端点可以让服务端一直挂着，单 worker 下这就是一次拒绝服务）",
+      "校验失败一律 503 `model_unreachable`，且不回显解析到的 IP",
+      "`X-Model-Key` **允许为空串**（P1 本机端点无需凭据），但**不存在**「头部缺失且端点需要凭据」这种组合——那种情况返回 503 `model_key_missing`",
+      "model 名不得含控制字符与路径分隔符",
+      "请求体里**没有任何字段可以承载凭据**（凭据只能在请求头）—— 这是 R-M 第 ⑦ 面的结构化形式"
+    ]
+  },
+  "examples": [
+    {
+      "query": "这道贝叶斯题怎么算？",
+      "context": {
+        "text": "某病发病率 1%，检测灵敏度 90%、特异度 90%……",
+        "refs": [
+          {
+            "kind": "problem",
+            "id": "prob_bayes_0012"
+          }
+        ]
+      },
+      "endpoint": {
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com/v1"
+      }
+    },
+    {
+      "query": "再讲一遍全概率公式",
+      "endpoint": {
+        "provider": "custom",
+        "model": "local-qwen",
+        "base_url": "http://127.0.0.1:11434/v1"
+      }
+    },
+    {
+      "providers": [
+        {
+          "provider": "deepseek",
+          "label": "DeepSeek",
+          "default_base_url": "https://api.deepseek.com/v1",
+          "requires_key": true
+        },
+        {
+          "provider": "custom",
+          "label": "自定义 OpenAI 兼容端点",
+          "default_base_url": null,
+          "requires_key": false
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "latency_ms": 412.7
+    }
+  ]
+}

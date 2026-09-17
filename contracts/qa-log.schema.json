@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/qa-log.schema.json",
+  "title": "问答流水（QA Log · API 视图）",
+  "description": "`student_qa_log` 的条目视图，供 **`GET /api/me/qa`（我的问答历史）** 使用（该端点由 2026-09-16 裁定新增，**待补入 `docs/02 §6.1`** —— 见 `docs/04 §3` / `§9` 缺口 1）。★ 本契约是「**同一份数据有两个属性**」的那一个例子：它既是 L2 学生数据，**又是唯一会被发往第三方的表**（`docs/02 §1.3`）。因此它同时承担两件事：① 让「我的问答历史」可读（`docs/02 §3.4` 说它支撑「F7 的**问答侧**」）；② 让**去向可查**有据 —— `egress` / `provider` / `model` 三个字段就是 N16 验收②（设置页展示的去向与 `SELECT DISTINCT egress` 一致）的读对象。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["qa_id", "query", "answer", "provider", "model", "egress", "created_at"],
+  "properties": {
+    "qa_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "流水行标识。★ 它进**分页游标**（游标内部是 `created_at` + 它，`docs/02 §6.4`），因此**必须稳定且唯一** —— 同秒写入的多条记录靠它保证翻页不重复、不漏项。"
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "★ **提问原文** —— L2 里最敏感的字段（`docs/02 §3.1`），也是**会被发往第三方模型端点**的载荷之一（N14 · N15 的告知文案里「载荷范围」的第一项）。"
+    },
+    "answer": {
+      "type": ["string", "null"],
+      "maxLength": 8000,
+      "description": "回答正文。★ **可为 `null`**：`docs/02 §4.2` 的链路是「**先落 `qa_log` 再答**」，目的是「问了就算数」—— 因此一次中途失败（断流 / 模型不可达）**必须**留下一条 `answer: null` 的记录，而不是整行消失。"
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "本次实际使用的供应商（`docs/02 §1.4` 明写「`qa_log` 只记 `provider` / `model` / `egress`」）。★ **它不是凭据** —— 凭据绝不落库（N14 的硬约束 · **R-M 的第 ④ 面**）。"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "egress": {
+      "type": "string",
+      "enum": ["loopback", "remote"],
+      "description": "★ **去向**（N16 的验收对象）。`loopback` = 本机端点（**不发往第三方**）· `remote` = 远程端点（**会外传**）。★ 枚举里**没有 `null`**：一条流水存在就说明确实发生过一次调用，因此去向必然已知 —— 这与 `user.schema.json` 的 `noticeStatus.egress`（可以为 `null`，表示「还没有凭据、尚未发生调用」）是**两个不同的场景**，不要混。★ 无凭据（P3）**不写 `qa_log`**：没发起就没有流水。"
+    },
+    "created_at": {
+      "type": "number",
+      "description": "提问时刻（epoch 秒，float）。★ 它是分页的排序键（`created_at DESC, id DESC`，`docs/02 §6.4`）。"
+    }
+  },
+  "x-view-vs-row": {
+    "description": "★ 视图与数据库行的差异（`docs/04 §4` 的视图口径在本文件的落地）。行的权威是 `docs/02 §3.1`。",
+    "row_only": {
+      "user_id": "端点 per-user（`GET /api/me/qa`），视图不需要"
+    },
+    "note": "本表**没有**「视图独有字段」—— 与 `attempt` 的 `hint_used_total`（派生值）不同，`qa_log` 的字段全部是真实列。"
+  },
+  "x-composition": {
+    "description": "列表响应的组合方式（`GET /api/me/qa` 走 C2 分页）。",
+    "pattern": "{\"allOf\": [{\"$ref\": \"pagination.schema.json\"}, {\"properties\": {\"items\": {\"items\": {\"$ref\": \"qa-log.schema.json\"}}}}]}"
+  },
+  "examples": [
+    {
+      "qa_id": "qa_3f9c1a2b4d5e",
+      "query": "这道贝叶斯题怎么算？",
+      "answer": "答案是 0.09。先写出条件概率的定义式……",
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "egress": "remote",
+      "created_at": 1789543900.12
+    },
+    {
+      "qa_id": "qa_7a1b2c3d4e5f",
+      "query": "再讲一遍全概率公式",
+      "answer": null,
+      "provider": "custom",
+      "model": "local-qwen",
+      "egress": "loopback",
+      "created_at": 1789543950.0
+    }
+  ]
+}

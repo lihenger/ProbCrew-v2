@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/mastery.schema.json",
+  "title": "掌握度与进度（Mastery · API 视图）",
+  "description": "`GET /api/me/progress` 的响应与掌握度条目视图。★ **数据源必须是作答记录** —— 旧仓的失败模式是统计接口读了问答流水，于是「问了 100 次」显示成「学习了 100 次」（`docs/01` 承诺 4）。★ 本契约还钉死两件容易含糊的事：**总作答数按作答去重**（一道题挂多个知识点时不得对聚合值求和，否则总量虚高）· **薄弱判定阈值不在 v2 范围内**，因此响应用 `const` 明确声明「暂不显示薄弱点」（决策 7A）。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["total_attempts", "topics", "weak"],
+  "properties": {
+    "total_attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "★ **总作答数，按 `attempt_id` 去重**（`COUNT(DISTINCT attempt_id)`）。★ **不得对 `mastery.attempts` 求和** —— 一道题可以挂多个知识点，求和会让同一份作答被重复计入，总量虚高（`docs/02 §3.2` 的多知识点聚合口径）。"
+    },
+    "topics": {
+      "type": "array",
+      "description": "逐知识点的进度。★ v2 只承诺 **「总作答数 + 每知识点正确率」** 两个可见量（`docs/01` F11 已把取值范围收窄）。",
+      "items": {
+        "$ref": "#/definitions/topicProgress"
+      }
+    },
+    "weak": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "note"],
+      "description": "★ **薄弱判定的显式占位** —— 本对象是决策 7A 在契约层的落地。",
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "const": false,
+          "description": "★ **恒为 false**：薄弱阈值属**学习者建模**，`docs/01` §9 明确列为不做 ⇒ v2 **不产出薄弱点**。★ 当阈值将来落地时，把 `const false` 放宽为 `boolean` 属**兼容变更**（放宽取值集合），因此这里用 `const` 不会造成将来的破坏性变更。"
+        },
+        "note": {
+          "type": "string",
+          "const": "数据不足，暂不显示薄弱点",
+          "description": "★ **写死为这一句**（决策 7A）：阈值未定义期间的占位文案**不得由各实现者自拟**。★ 原写法给了「数据不足」与「阈值未定义」两个可选，前者是给学生看的、后者是给开发者看的 —— 混用会让同一个界面在不同页面说两句不同的话。"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "topicProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic", "attempts", "correct"],
+      "description": "`(user, topic)` 的聚合视图。★ `topic` **就是知识点 ID**（与 `attempt.kc_ids` 同口径，不再另设一套命名）。★ 视图不含 `user_id`（端点 per-user）。",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "pattern": "^kc_[a-z0-9_]+$",
+          "maxLength": 64
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该知识点的作答次数（一次作答对**它挂的每个知识点各累加一次** —— 因此它**不能**用来算总量，见本文件根的 `total_attempts`）。"
+        },
+        "correct": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "其中正确的次数。★ **`correct` 为 NULL 的作答（不可判定）不累加**（`docs/02 §4.3-②`）。"
+        },
+        "accuracy": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "正确率 = `correct / attempts`。★ `attempts = 0` 或全部为不可判定时为 `null` —— **不得显示 0%**：那会把「还没做」说成「全错」。"
+        },
+        "updated_at": {
+          "type": "number",
+          "description": "最后一次更新的时刻（epoch 秒，float）。"
+        }
+      }
+    }
+  },
+  "x-invariants": {
+    "description": "★ draft-07 表达不了的纪律。",
+    "rules": [
+      "total_attempts = COUNT(DISTINCT attempt_id) —— **不是** SUM(topics[].attempts)",
+      "「首次正确率」的单位是 **(user, item) 的第一次 attempt**，不是 (user, topic) 的第一次 —— 后者在一题多知识点时无定义（docs/02 §3.2）",
+      "每次作答后与 attempt 写入**同事务**累加；不做「重算全表」（重算会在删除时产生漂移）",
+      "weak.available 必须恒为 false（阈值不在 v2 范围）"
+    ]
+  },
+  "examples": [
+    {
+      "total_attempts": 37,
+      "topics": [
+        {
+          "topic": "kc_bayes",
+          "attempts": 12,
+          "correct": 7,
+          "accuracy": 0.5833,
+          "updated_at": 1789544020.5
+        },
+        {
+          "topic": "kc_conditional_prob",
+          "attempts": 9,
+          "correct": 9,
+          "accuracy": 1.0,
+          "updated_at": 1789543900.12
+        },
+        {
+          "topic": "kc_random_variable",
+          "attempts": 0,
+          "correct": 0,
+          "accuracy": null,
+          "updated_at": 1789543900.12
+        }
+      ],
+      "weak": {
+        "available": false,
+        "note": "数据不足，暂不显示薄弱点"
+      }
+    }
+  ]
+}

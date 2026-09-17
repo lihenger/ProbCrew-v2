@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/hint.schema.json",
+  "title": "提示阶梯与题目拆解（Hint · API 视图）",
+  "description": "`POST /api/practice/hint` 的请求与响应、提示流水条目，以及 **F17 的结构化拆解**。★ 本文件是「**帮助**」这一域的契约 —— 「提示阶梯不是体验优化，是伦理约束落地的地方」（`docs/01` §5 原话）：它必须在数据模型里有对应字段（用了几次提示），否则约束**无法执行、也无法度量**。★ 因此这里的三条断言都有执行载体：`hint_used` 由**服务端**从提示流水量出（客户端上报值一律忽略）· 第三级提示（完整解析）**只在提交之后**可取 · 每次提示使计数**精确 +1**。",
+  "version": "v1.0",
+  "oneOf": [
+    {
+      "title": "提示请求（POST /api/practice/hint）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "item_id",
+        "session_id"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^prob_[a-z0-9_]+$",
+          "maxLength": 64
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "会话标识。★ **请求体里没有 `level`** —— 推进到哪一级由**服务端按提示流水决定**，不由客户端指定。这是 `docs/02 §4.3-6` 的「只改 URL 不能让它认为已取过提示」在契约层的体现。"
+        }
+      }
+    },
+    {
+      "title": "提示响应",
+      "$ref": "#/definitions/hintResponse"
+    }
+  ],
+  "definitions": {
+    "hintResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "content",
+        "hint_used"
+      ],
+      "description": "取出下一级提示的结果。★ **服务端按流水推进**：本次是第几级由 `student_hint_log` 里该 `(user,item,session)` 已有几条决定。",
+      "properties": {
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3,
+          "description": "1 =「方向」（**不给完整思路**）· 2 =「步骤骨架」（**不给最终答案**）· 3 =「完整解析」。★ **第 3 级只在已提交之后可取**（`docs/02 §5.2` 的三条不可违反之一：未提交前不返回完整解析）。★ 它的执行载体是流水本身：请求体里没有 `level`，客户端无法把它「改成 3」。"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "该级提示的正文。★ **第 1 级不得含完整思路、第 2 级不得含最终答案** —— 这两条是文案纪律，无法由 schema 校验（见 `x-invariants`）。"
+        },
+        "hint_used": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "★ **本次会话**的提示次数（作用域 `user,item,session`）。**由服务端从 `student_hint_log` 计数得出**，不接受客户端上报。"
+        },
+        "hint_used_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "跨会话累计（作用域 `user,item`），供错题本显示「这道题一共提示了 N 次」。★ **派生值，不落列**（`docs/02 §3.2`）。★ 本字段为**可选**：`docs/02 §4.3` 只写了三个字段，加上它属只增不改的兼容增量。"
+        }
+      }
+    },
+    "hintLogEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hint_id",
+        "item_id",
+        "session_id",
+        "level",
+        "served_at"
+      ],
+      "description": "提示流水条目（`student_hint_log` 的**视图**）。★ 它是 **`hint_used` 的唯一权威来源** —— 「每次提示精确 +1」与「用了 3 次提示才答对照实记」这两条，靠的就是这张表存在，而不是前端的一句声明。★ 视图不含 `user_id`（端点本身就是 per-user，见 `docs/04 §4` 的视图口径）。",
+      "properties": {
+        "hint_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "item_id": {
+          "type": "string",
+          "pattern": "^prob_[a-z0-9_]+$"
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "served_at": {
+          "type": "number",
+          "description": "发出时刻（epoch 秒，float）。"
+        },
+        "attempt_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64,
+          "description": "★ **可为空**：提示可以在作答之前取（这正是提示阶梯的用法）。若非空，表示这一级提示是在**某次作答之后**取的（如提交后取完整解析）—— 于是「提示在先还是作答在先」也可被追溯。"
+        }
+      }
+    },
+    "decomposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "known",
+        "asked",
+        "model_id"
+      ],
+      "description": "★ **F17 的结构化拆解**（已知 / 所求 / 适用模型）。★ **它为什么在这里，而不是在 `problem.schema.json` 里**：拆解的第三段「**适用模型**」正是 F6 提示阶梯**第一级**（「方向」）的内容 —— 把它挂进题目列表，等于学生一打开题就白拿了一级提示，**绕过 `docs/01` §5 的伦理约束**。因此它属于「帮助」域，随提示与答疑链交付（见 `docs/04 §9` 缺口 4）。",
+      "properties": {
+        "known": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "已知条件。★ **非空**（F17 的结构断言：三段字段非空且可被脚本校验）。"
+        },
+        "asked": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "所求。★ **非空**。"
+        },
+        "model_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^pt_[a-z0-9_]+$",
+          "maxLength": 64,
+          "description": "★ **适用模型**：必须是 `content/types.json` 里的题型 ID（`pt_<slug>`）。★ **`null` = 显式标注「未匹配模型」** —— 无法判定时**不得留空装懂**（F17 原文）。★ 它**不得由模型现编**：这个 ID 必须命中资产，因此「第三段」是**可核对**的，不是一段自由文本。"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "补充说明（如「未匹配模型」的原因）。"
+        }
+      }
+    }
+  },
+  "x-invariants": {
+    "description": "★ draft-07 表达不了的纪律，写成机器可读断言说明，由 `docs/04 §7` 的校验实现（阶段 B）与接口用例执行。",
+    "rules": [
+      "level 必须等于「该 (user,item,session) 的现有流水条数 + 1」—— 服务端推进，客户端不可指定",
+      "写流水与回传 hint_used 必须在**同一事务**内（否则会出现「发了提示但没记」或「记了两次」）",
+      "level=3 只在 `student_attempt` 里已存在该 (user,item) 的作答之后才可返回",
+      "请求体里出现 `hint_used` / `level` 时**一律忽略、不报错**（避免旧客户端崩），但绝不采信",
+      "level=1 的 content 不得含完整解题思路；level=2 不得含最终答案 —— **这是文案纪律，无法机检，只能 review**（如实标注，不假装它已自动化）"
+    ]
+  },
+  "examples": [
+    {
+      "item_id": "prob_bayes_0012",
+      "session_id": "ses_20260916_a1b2c3"
+    },
+    {
+      "level": 1,
+      "content": "先想清楚：题目给的是「检测阳性」这个条件下求什么？注意条件与被求事件的方向。",
+      "hint_used": 1,
+      "hint_used_total": 3
+    }
+  ]
+}
