@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/knowledge.schema.json",
+  "title": "知识点与公式（Knowledge · API 视图）",
+  "description": "知识页两个端点的响应形状：`GET /api/knowledge/tree`（知识点 DAG）与 `GET /api/knowledge/formula`（按名称的公式检索，F18）。★ **本文件是「视图可直接复用资产条目」的例外**，理由写在 `x-view-vs-asset`：DAG 节点里**没有答案**，公式条目**正是 F18 要展示的东西**（学生主动检索一个定理，展示它就是功能本身）—— 因此它们不需要像 `problem.schema.json` 那样另立一份「去掉秘密」的形状。**判断标准不是「资产还是视图」，而是「这条目里有没有不该给学生看的字段」。**",
+  "version": "v1.0",
+  "oneOf": [
+    {
+      "title": "知识点树（GET /api/knowledge/tree）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "counts"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "description": "全部知识点节点。★ **边不单独返回** —— 每条边上信息都在节点的 `depends_on` 里，另发一份 `edges` 会出现两处记载（改一处漏一处）。",
+          "items": {
+            "$ref": "content.schema.json#/definitions/dagEntry"
+          }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "nodes",
+            "chapters"
+          ],
+          "description": "★ **由服务端算好的规模统计**，让客户端与门禁**不必重新遍历**就能核对 F20 的下界（≥ 40 节点、≥ 5 章）。★ 为什么把它放进响应而不是只写在文档里：下界是 MUST 的验收条件，而「客户端自己数」会让每一处消费方各写一遍统计逻辑。",
+          "properties": {
+            "nodes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "chapters": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "公式检索结果（GET /api/knowledge/formula）",
+      "$ref": "content.schema.json#/definitions/formulaEntry"
+    }
+  ],
+  "x-view-vs-asset": {
+    "description": "★ 为什么这两种视图可以直接复用资产条目，而题目视图不行。",
+    "rule": "判断标准是「这条目里有没有不该给学生看的字段」，而不是「它是资产还是视图」。",
+    "dag": "节点 = {kc_id, name, chapter, depends_on}，**没有答案、没有解法** ⇒ 直接复用 `content.schema.json` 的 `dagEntry`。",
+    "formula": "公式条目 = {fm_id, name, latex, kc_ids, conditions, counterexample}，**它正是 F18 要展示的东西** ⇒ 直接复用 `content.schema.json` 的 `formulaEntry`。",
+    "problem": "★ **反例**：题库条目含 `expected` 与 `solution` ⇒ **必须另立视图**（见 `problem.schema.json`）。★ 同理，题型条目含 `framework`（解法框架）**没有公开视图**：它只在提示阶梯与 F17 的拆解里出现。"
+  },
+  "x-upstream-lookup": {
+    "description": "★ **F9 的「上溯」没有端点，这是有意的**（2026-09-16 核对 `docs/02 §6.1` 的 24 条 path 后确认）。",
+    "decision": "上溯由**前端用本端点的 DAG 数据自己做反向可达**，服务端不为它新增端点、也不新增契约。",
+    "why": "F9 是 SHOULD，需求只是「集合可显示 + 计数」（`docs/01` F9，不设门槛）；而 DAG 已经全量返回，反向可达就是一个 BFS。★ 为一件事新增端点会让 `docs/02 §6.1` 的计数（以及 `docs/04 §3` 的覆盖表）与实际实现分叉 —— 那是「文档漂移」最经典的起点。",
+    "server_side_note": "`domain/` 里的上溯函数仍然保留（`docs/02 §2.4` 把它划归纯函数层），供**服务端内部**使用（如答疑链定位薄弱点）—— 但**它不对外开端点**。"
+  },
+  "examples": [
+    {
+      "nodes": [
+        {
+          "kc_id": "kc_semantics",
+          "name": "样本空间与事件运算",
+          "chapter": 1,
+          "depends_on": []
+        },
+        {
+          "kc_id": "kc_conditional_prob",
+          "name": "条件概率",
+          "chapter": 3,
+          "depends_on": [
+            "kc_semantics"
+          ]
+        },
+        {
+          "kc_id": "kc_bayes",
+          "name": "贝叶斯公式",
+          "chapter": 3,
+          "depends_on": [
+            "kc_conditional_prob",
+            "kc_total_probability"
+          ]
+        }
+      ],
+      "counts": {
+        "nodes": 42,
+        "chapters": 6
+      }
+    },
+    {
+      "fm_id": "fm_bayes",
+      "name": "贝叶斯公式",
+      "latex": "P(A|B)=\\frac{P(B|A)P(A)}{P(B)}",
+      "kc_ids": [
+        "kc_bayes",
+        "kc_conditional_prob"
+      ],
+      "conditions": "P(B)>0，且 {A_i} 构成完备事件组时使用全概率形式。"
+    }
+  ]
+}

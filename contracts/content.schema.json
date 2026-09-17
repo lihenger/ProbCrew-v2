@@ -1,0 +1,855 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/content.schema.json",
+  "title": "内容资产与评测资产（Content & Eval Assets）",
+  "description": "`content/` 下**全部文件的形状**：五类自制内容资产（L0）· `MANIFEST.json`（含 `content_rev`）· 评测资产（样例集与期望判据表）。★ **一个文件承担四种根形状**（用 `oneOf` 分支区分），因为 `docs/01` 附录 A 把 F20 与 N13 这两条 MUST 的「格式与存放位置」一并指派给了 C13 —— 拆成两份契约只会让「资产怎么算版本」与「评测资产放在哪」分成两处记载。★ **为什么规模下界写进契约**：`docs/01` F20 的首版下界（题库 ≥ 30 · DAG ≥ 40 节点 ≥ 5 章 · 错因 ≥ 40 · 题型 ≥ 15 · 公式 ≥ 30）此前只是**散文里的一句话**，写成 `minItems` 之后它变成**启动校验能拦下来的红灯** —— 旧仓的失败模式正是「要求它存在，但没人核对它够不够」。",
+  "version": "v1.0",
+  "oneOf": [
+    {
+      "title": "内容资产文件（content/problems.json）—— 题库",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "rev",
+        "items"
+      ],
+      "properties": {
+        "asset": {
+          "const": "problems",
+          "description": "资产类型 = 题库。★ 它同时是**文件名**与 `content_rev` 算法里的**键名**（决策 4B）—— 键名进哈希，不能随手改。"
+        },
+        "rev": {
+          "type": "string",
+          "pattern": "^problems-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$",
+          "description": "版本号，形如 `problems-2026.09.16.1`（`docs/02 §3.3` 规则 1）。★ 前缀必须等于 `asset`（见 `x-invariants`）；★ **`rev` 变更即视为内容变更** —— 改一个解释也要升版本，否则历史记录的解释链断裂（规则 4）。"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 30,
+          "items": {
+            "$ref": "#/definitions/problemEntry"
+          },
+          "description": "★ **`minItems: 30` 就是 F20 的首版规模下界**（题库 ≥ 30，只许上调）。★ 写进契约而不只写在文档里，是因为「要求它存在」与「核对它够不够」是两件事 —— 旧仓的失败模式正是前者做到了、后者没人做（`docs/01` §8 的 R-C：「空缺即该需求不得计为已立项」）。"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    {
+      "title": "内容资产文件（content/mistakes.json）—— 错因库",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "rev",
+        "items"
+      ],
+      "properties": {
+        "asset": {
+          "const": "mistakes",
+          "description": "资产类型 = 错因库。★ 它同时是**文件名**与 `content_rev` 算法里的**键名**（决策 4B）—— 键名进哈希，不能随手改。"
+        },
+        "rev": {
+          "type": "string",
+          "pattern": "^mistakes-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$",
+          "description": "版本号，形如 `mistakes-2026.09.16.1`（`docs/02 §3.3` 规则 1）。★ 前缀必须等于 `asset`（见 `x-invariants`）；★ **`rev` 变更即视为内容变更** —— 改一个解释也要升版本，否则历史记录的解释链断裂（规则 4）。"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 40,
+          "items": {
+            "$ref": "#/definitions/mistakeEntry"
+          },
+          "description": "★ **`minItems: 40` 就是 F20 的首版规模下界**（错因库 ≥ 40，只许上调）。★ 写进契约而不只写在文档里，是因为「要求它存在」与「核对它够不够」是两件事 —— 旧仓的失败模式正是前者做到了、后者没人做（`docs/01` §8 的 R-C：「空缺即该需求不得计为已立项」）。"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    {
+      "title": "内容资产文件（content/dag.json）—— 知识点 DAG",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "rev",
+        "items"
+      ],
+      "properties": {
+        "asset": {
+          "const": "dag",
+          "description": "资产类型 = 知识点 DAG。★ 它同时是**文件名**与 `content_rev` 算法里的**键名**（决策 4B）—— 键名进哈希，不能随手改。"
+        },
+        "rev": {
+          "type": "string",
+          "pattern": "^dag-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$",
+          "description": "版本号，形如 `dag-2026.09.16.1`（`docs/02 §3.3` 规则 1）。★ 前缀必须等于 `asset`（见 `x-invariants`）；★ **`rev` 变更即视为内容变更** —— 改一个解释也要升版本，否则历史记录的解释链断裂（规则 4）。"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 40,
+          "items": {
+            "$ref": "#/definitions/dagEntry"
+          },
+          "description": "★ **`minItems: 40` 就是 F20 的首版规模下界**（知识点 DAG ≥ 40，只许上调）。★ 写进契约而不只写在文档里，是因为「要求它存在」与「核对它够不够」是两件事 —— 旧仓的失败模式正是前者做到了、后者没人做（`docs/01` §8 的 R-C：「空缺即该需求不得计为已立项」）。"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    {
+      "title": "内容资产文件（content/formula.json）—— 公式库",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "rev",
+        "items"
+      ],
+      "properties": {
+        "asset": {
+          "const": "formula",
+          "description": "资产类型 = 公式库。★ 它同时是**文件名**与 `content_rev` 算法里的**键名**（决策 4B）—— 键名进哈希，不能随手改。"
+        },
+        "rev": {
+          "type": "string",
+          "pattern": "^formula-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$",
+          "description": "版本号，形如 `formula-2026.09.16.1`（`docs/02 §3.3` 规则 1）。★ 前缀必须等于 `asset`（见 `x-invariants`）；★ **`rev` 变更即视为内容变更** —— 改一个解释也要升版本，否则历史记录的解释链断裂（规则 4）。"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 30,
+          "items": {
+            "$ref": "#/definitions/formulaEntry"
+          },
+          "description": "★ **`minItems: 30` 就是 F20 的首版规模下界**（公式库 ≥ 30，只许上调）。★ 写进契约而不只写在文档里，是因为「要求它存在」与「核对它够不够」是两件事 —— 旧仓的失败模式正是前者做到了、后者没人做（`docs/01` §8 的 R-C：「空缺即该需求不得计为已立项」）。"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    {
+      "title": "内容资产文件（content/types.json）—— 题型与解法套路",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "rev",
+        "items"
+      ],
+      "properties": {
+        "asset": {
+          "const": "types",
+          "description": "资产类型 = 题型与解法套路。★ 它同时是**文件名**与 `content_rev` 算法里的**键名**（决策 4B）—— 键名进哈希，不能随手改。"
+        },
+        "rev": {
+          "type": "string",
+          "pattern": "^types-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$",
+          "description": "版本号，形如 `types-2026.09.16.1`（`docs/02 §3.3` 规则 1）。★ 前缀必须等于 `asset`（见 `x-invariants`）；★ **`rev` 变更即视为内容变更** —— 改一个解释也要升版本，否则历史记录的解释链断裂（规则 4）。"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 15,
+          "items": {
+            "$ref": "#/definitions/typeEntry"
+          },
+          "description": "★ **`minItems: 15` 就是 F20 的首版规模下界**（题型与解法套路 ≥ 15，只许上调）。★ 写进契约而不只写在文档里，是因为「要求它存在」与「核对它够不够」是两件事 —— 旧仓的失败模式正是前者做到了、后者没人做（`docs/01` §8 的 R-C：「空缺即该需求不得计为已立项」）。"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    {
+      "title": "MANIFEST.json",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revs",
+        "content_rev"
+      ],
+      "properties": {
+        "revs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "problems",
+            "mistakes",
+            "dag",
+            "formula",
+            "types"
+          ],
+          "description": "五类资产各自的 `rev`。★ 五个键**全部必填** —— 少一个键就意味着 `content_rev` 少参与一项，而历史记录仍会声称它解释得了。",
+          "properties": {
+            "problems": {
+              "type": "string",
+              "pattern": "^problems-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"
+            },
+            "mistakes": {
+              "type": "string",
+              "pattern": "^mistakes-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"
+            },
+            "dag": {
+              "type": "string",
+              "pattern": "^dag-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"
+            },
+            "formula": {
+              "type": "string",
+              "pattern": "^formula-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"
+            },
+            "types": {
+              "type": "string",
+              "pattern": "^types-[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"
+            }
+          }
+        },
+        "content_rev": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{12}$",
+          "description": "★ 组合版本号，**12 位十六进制**（算法见 `x-content-rev`）。它落到 `attempt.asset_version`（`docs/02 §3.2`），因此**必须可复算** —— 算不出来，F7 的历史记录就无法解释。"
+        }
+      }
+    },
+    {
+      "title": "样例集（content/eval/sample/*.json）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cases"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "minItems": 3,
+          "description": "★ **入仓**、**纳入门禁**（缺失即红灯）的那一层：只承担**回归保护**（「这条链真的接上了」），**不承担 N1 / F5 的能力验收**（那是冻结正式集的事）—— `docs/02 §9.1` 的「分层」行。首版 3–5 题。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "case_id",
+              "item_id",
+              "answer",
+              "expected_conclusion"
+            ],
+            "properties": {
+              "case_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "item_id": {
+                "type": "string",
+                "pattern": "^prob_[a-z0-9_]+$"
+              },
+              "answer": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "expected_conclusion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300,
+                "description": "期望结论（如「判定为错，且命中 `mp_direction_reversed`」）。★ 样例集**可以**含期望值 —— 它是公开的、且只做回归保护。"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "期望判据表（与冻结正式集同处，不入主仓）",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "frozen_at",
+        "solution_injection",
+        "answer_injection"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "frozen_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "冻结日期（`docs/01` §6 的「版本号 + 冻结日期」）。★ **阈值不得在看到结果之后调整测法**。"
+        },
+        "solution_injection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cases"
+          ],
+          "description": "★ **解答级注入集 → 服务 N1**。注入物 = **系统错解**（一道题 + 一个已知错误的**解答**），注入点 = **验证链的输入**（函数级、确定性、可批量），断言 = 该解答**被标注存疑或级别被降**。★ **不走 `/practice/grade`** —— 那条链上任何错答案都会被判错，门禁会**平凡通过**。",
+          "properties": {
+            "cases": {
+              "type": "array",
+              "minItems": 20,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "case_id",
+                  "item_id",
+                  "wrong_solution",
+                  "ab_reachable",
+                  "category"
+                ],
+                "properties": {
+                  "case_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "item_id": {
+                    "type": "string",
+                    "pattern": "^prob_[a-z0-9_]+$"
+                  },
+                  "wrong_solution": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "description": "已知错误的**解答**（不是错答案）。"
+                  },
+                  "ab_reachable": {
+                    "type": "boolean",
+                    "description": "★ **这道错解是否落在 A / B 级可达的类别上**（`sympy_recompute` / `symbolic_equivalence` 可施加）。★ 它存在的唯一理由是 `docs/01` N1 的**构成要求**：20 道中**至少 8 道**必须 `true`，且这些道次的拦截方式必须是**「重算不一致」**，**不得全部靠「手段缺失 ⇒ 降级到 D」** —— 否则那条 ≥18/20 的地板只约束了「有没有一个降级开关」。"
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "direction_reversed",
+                      "missing_partition",
+                      "unit_error",
+                      "independence_confusion"
+                    ],
+                    "description": "错解类别（方向颠倒 / 漏完备组 / 单位错 / n 乘错）。★ 与 `docs/01` N1 的「四类各 5 道」一一对应；`每类 ≥ 4/5` 的**分类地板**靠它才可执行。"
+                  },
+                  "expected": {
+                    "type": "string",
+                    "enum": [
+                      "flagged_uncertain",
+                      "level_downgraded",
+                      "recompute_mismatch"
+                    ],
+                    "description": "期望的拦截方式。`recompute_mismatch` = 重算结果不一致（`docs/02 §4.4③` 第 2 行）—— **A/B 可达的道次必须期望这个值**。"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "answer_injection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cases"
+          ],
+          "description": "★ **答案级注入集 → 服务 F5**。注入物 = **学生错答案** + **期望错因 ID 集合**，注入点 = **错因匹配的函数级入口**（`domain.match_mistake(normalize(answer), item)`，**归一化必须在入口内**，否则测的是现实中不存在的路径）。断言 = **实际命中集合 ⊇ 期望集合，且不含未期望条目**。",
+          "properties": {
+            "cases": {
+              "type": "array",
+              "minItems": 20,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "case_id",
+                  "item_id",
+                  "answer",
+                  "expected_mistake_ids",
+                  "category",
+                  "negative"
+                ],
+                "properties": {
+                  "case_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "item_id": {
+                    "type": "string",
+                    "pattern": "^prob_[a-z0-9_]+$"
+                  },
+                  "answer": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "expected_mistake_ids": {
+                    "type": "array",
+                    "description": "期望命中的错因 ID **集合**。★ 用**集合**而不是单值：一个错答案可以同时踩两个坑，单值比较会把它判成失败。★ **负样本时必须为空数组**。",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^mp_[a-z0-9_]+$"
+                    }
+                  },
+                  "category": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "★ **错因库的一级分类**（对应 `content/mistakes.json` 里条目的 `category`）。★ `docs/01` F5 的「每类 ≥ 4/5」中的「类」就是它 —— 此前「类」**没有定义**，该指标因此不可执行。"
+                  },
+                  "negative": {
+                    "type": "boolean",
+                    "description": "★ **负样本**：确实**没有**对应错因的错误答案，期望输出「**未识别错因**」。★ **编造即红灯** —— 它是 F5「不得编造错因」的唯一载体。20 道之外**另附 ≥ 2 道**。"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "frozen_verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "冻结验证集（`docs/01` §6 的「解题正确率」与「判定准确率」都是在它上面测的）。**出题记录不进实现人视野**。",
+          "properties": {
+            "cases": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "item_id",
+                  "expected_conclusion"
+                ],
+                "properties": {
+                  "item_id": {
+                    "type": "string",
+                    "pattern": "^prob_[a-z0-9_]+$"
+                  },
+                  "expected_conclusion": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "grading_basis": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "评分判据（固定评分脚本读它）。"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "problemEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prob_id",
+        "stem",
+        "expected",
+        "kc_ids",
+        "pt_id",
+        "gradable",
+        "answer_kind",
+        "difficulty"
+      ],
+      "description": "题库条目。★ **它含 `expected`（标准答案）—— 而接口视图不含**（见 `problem.schema.json`）。这正是「资产」与「视图」必须分成两种形状的原因：只要列表接口带上标准答案，前端不显示就只是「没做」，谁都能直接读接口（`docs/02 §4.3-5`）。",
+      "properties": {
+        "prob_id": {
+          "type": "string",
+          "pattern": "^prob_[a-z0-9_]+$",
+          "description": "题目 ID（`docs/02 §2.2`）。**被历史记录引用 ⇒ 改含义只能新增 ID**。"
+        },
+        "stem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "description": "题干。"
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400,
+          "description": "标准答案。★ 它会被**快照**进 `attempt.expected`（F7）。"
+        },
+        "kc_ids": {
+          "type": "array",
+          "minItems": 1,
+          "description": "★ **题库条目必须关联知识点 ID**（F20）—— `attempt.kc_ids` 由它继承，因此 F19 的「非空」是**从源头保证**的，而不是在写入时补一个空数组。",
+          "items": {
+            "type": "string",
+            "pattern": "^kc_[a-z0-9_]+$"
+          }
+        },
+        "pt_id": {
+          "type": "string",
+          "pattern": "^pt_[a-z0-9_]+$",
+          "description": "题型 ID。★ F17 的「适用模型」`model_id` **必须命中本资产**，不得由模型现编。"
+        },
+        "gradable": {
+          "type": "boolean",
+          "description": "★ **未标记视为资产错误 ⇒ 启动报错退出**（`docs/02 §3.3`）。`false` ⇒ 该题不进判定链：`correct` 落 `null`、`grader` 落 `not_gradable`、掌握度不累加（`§4.3-②` · `§8-18`）。"
+        },
+        "answer_kind": {
+          "type": "string",
+          "enum": [
+            "value",
+            "text"
+          ],
+          "description": "★ 按**标准答案的类型**分类：数值或闭式表达式 ⇒ `value`；含单位 / 文字结论 ⇒ `text`。★ 它是 `docs/01 §6` 的**判定准确率**与**判定延迟**两条验收的**唯一分类依据** —— 未标记同样视为资产错误。"
+        },
+        "difficulty": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "难度（1–5）。`docs/02 §2.1` 把难度列为题目的组成部分。"
+        },
+        "solution": {
+          "$ref": "attempt.schema.json#/definitions/solution",
+          "description": "★ 解析（可选）。**形状直接复用 `attempt.schema.json` 的 `solution`** —— 于是「刷题链的解析」只有一个权威，且它与 `grade` 响应里的 `solution` 天然同构。"
+        }
+      }
+    },
+    "mistakeEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mp_id",
+        "name",
+        "category",
+        "kc_ids",
+        "explanation"
+      ],
+      "description": "错因模式条目。★ **错误种类有限且可枚举**，因此这是一份可穷举、可版本化的资产（`docs/01` §2 性质 3）—— 它是 F5 的食粮，也是「不需要任何学生数据就能整理出来」的那一份。",
+      "properties": {
+        "mp_id": {
+          "type": "string",
+          "pattern": "^mp_[a-z0-9_]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "错因中文名（如「方向颠倒」）—— 会直接展示给学生。"
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "★ **一级分类**。★ 它必须存在，否则 `docs/01` F5 的「每类 ≥ 4/5」与 `docs/02 §9.1` 的「答案级注入集 = 4 类 × 5 道」**都没有分类可依** —— 这是本轮把「类」落成字段的直接原因。首版 ≥ 4 类（见 `x-invariants`）。"
+        },
+        "kc_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^kc_[a-z0-9_]+$"
+          },
+          "description": "★ 每条错因必须关联**至少一个**知识点（F20 的摊布下限）。"
+        },
+        "explanation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "错因解释（**会展示给学生**）。★ 它也是重算与「下一步该检查什么」的素材。"
+        }
+      }
+    },
+    "dagEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kc_id",
+        "name",
+        "chapter",
+        "depends_on"
+      ],
+      "description": "知识点 DAG 的一个节点。★ **无环是硬约束**（F19）：建图时做拓扑排序，**有环即拒绝加载**（不是警告）—— 加载失败必须报错退出，不得静默丢边。",
+      "properties": {
+        "kc_id": {
+          "type": "string",
+          "pattern": "^kc_[a-z0-9_]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "chapter": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "所属章节。★ `docs/01` F20 的「**覆盖 ≥ 5 章**」靠它才可核对（见 `x-invariants`）。"
+        },
+        "depends_on": {
+          "type": "array",
+          "description": "前置知识点（F9 的上溯沿它**反向**走）。★ **可以为空数组**（根节点没有前置）；★ **不得为 `null`** —— 「没有前置」与「忘了写」必须能区分。",
+          "items": {
+            "type": "string",
+            "pattern": "^kc_[a-z0-9_]+$"
+          }
+        }
+      }
+    },
+    "formulaEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fm_id",
+        "name",
+        "latex",
+        "kc_ids",
+        "conditions"
+      ],
+      "description": "公式 / 定理条目。★ F18 要求「按名称返回**唯一条目**且带**适用条件**」—— 名称唯一性由资产校验保证（重名即资产错误 ⇒ 启动报错退出）。",
+      "properties": {
+        "fm_id": {
+          "type": "string",
+          "pattern": "^fm_[a-z0-9_]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "定理 / 公式名（检索入口）。**名称必须在资产内唯一**。"
+        },
+        "latex": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "kc_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^kc_[a-z0-9_]+$"
+          },
+          "description": "关联知识点（F20 明写「公式条目必须关联具体知识点 ID」）。"
+        },
+        "conditions": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "★ **适用条件**（F18 的验收对象）。写不出适用条件的公式条目等于没写 —— 学生照用就会错。"
+        },
+        "counterexample": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "反例（`docs/02 §2.1` 把「反例」列为公式条目的组成部分）。★ 本字段为**可选**：F18 的验收只要求「适用条件」，把反例设成必填会超出需求。"
+        }
+      }
+    },
+    "typeEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pt_id",
+        "name",
+        "kc_ids",
+        "framework"
+      ],
+      "description": "题型与解法套路条目。★ 它是 **F17 的「适用模型」的食粮**：题目拆解的第三段候选模型**必须命中本资产**，不得由模型现编（`docs/01` F17）。",
+      "properties": {
+        "pt_id": {
+          "type": "string",
+          "pattern": "^pt_[a-z0-9_]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "题型名（如「贝叶斯公式正向代入」）。"
+        },
+        "kc_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^kc_[a-z0-9_]+$"
+          },
+          "description": "★ **题型条目必须关联它所用的知识点 ID**（F20 明写）。"
+        },
+        "framework": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "解法框架结构（`docs/02 §2.4` 把「题型的解法框架结构」划归 `domain`）。"
+        }
+      }
+    }
+  },
+  "x-content-rev": {
+    "description": "★ `content_rev` 的算法**已定死**（`docs/02 §3.3` 规则 2 / 决策 4B），本表是它的机器可读形式：五类资产按 **ASCII 键名升序** 排列，逐个拼成 `key=rev`，以 `;` 连接，取 `sha256(...).hexdigest()[:12]`。★ **顺序写死的理由**：按**中文名**排序会依赖 locale —— 同一份资产在不同机器上会算出**不同的 `content_rev`**，于是 `attempt.asset_version` 不可复现。",
+    "template": "sha256(\"dag=<rev>;formula=<rev>;mistakes=<rev>;problems=<rev>;types=<rev>\")[:12]",
+    "key_order": [
+      "dag",
+      "formula",
+      "mistakes",
+      "problems",
+      "types"
+    ],
+    "reverse_lookup": "哈希不可逆 ⇒ 反解是「在 `git log` 里找**计算出的 `content_rev` 相同**的那一版 `MANIFEST.json`」，再落回五类 rev。这一步可算、可核，所以反解链仍然成立。"
+  },
+  "x-floors": {
+    "description": "★ F20 的**首版规模下界**（只许上调）。写成 `minItems` 之后，它们由「散文里的一句话」变成**启动校验能拦下来的红灯**。",
+    "problems": {
+      "minItems": 30,
+      "long_term_target": 100
+    },
+    "mistakes": {
+      "minItems": 40
+    },
+    "dag": {
+      "minItems": 40,
+      "min_chapters": 5
+    },
+    "formula": {
+      "minItems": 30
+    },
+    "types": {
+      "minItems": 15
+    },
+    "spread_rule": {
+      "description": "★ **摊布下限**：每条错因 / 公式 / 题型条目须关联 ≥ 1 个知识点，且**单一知识点占比 ≤ 30%**。★ 为什么必须有它：否则可以构造「40 条错因全属一个知识点」的**合法**资产，让 F5 的地板变成白菜关卡。",
+      "min_kc_per_entry": 1,
+      "max_single_kc_share": 0.3
+    }
+  },
+  "x-invariants": {
+    "description": "★ draft-07 **表达不了算术与图性质**，下面各条不假装 schema 能校验，而是写成机器可读的断言说明，由 `docs/04 §7` 的校验实现（阶段 B）执行。",
+    "rules": [
+      "rev 的前缀必须等于 asset（`problems-…` 只能出现在 `asset: \"problems\"` 的文件里）",
+      "MANIFEST.revs 的五个值必须与对应资产文件里的 rev 逐项一致（不一致 ⇒ 启动报错退出，docs/02 §3.3 规则 5）",
+      "MANIFEST.content_rev 必须等于按 x-content-rev 复算的结果",
+      "DAG 必须无环（拓扑排序），且 node 数 ≥ 40、不同 chapter 数 ≥ 5",
+      "每条 mistake / formula / type 的 kc_ids 非空（已由 minItems 保证），且任一 kc 的占比 ≤ 30%",
+      "formula 的 name 在资产内唯一（重名 ⇒ 启动报错退出）",
+      "solution_injection 里 ab_reachable=true 的道次 ≥ 8 且 expected=\"recompute_mismatch\"",
+      "answer_injection 里 negative=true 的道次 ≥ 2，且其 expected_mistake_ids 必须为空数组；每个 category 的道次 ≥ 4",
+      "answer_injection 的 category 取值必须都能在 content/mistakes.json 的 category 里找到"
+    ]
+  },
+  "examples": [
+    {
+      "revs": {
+        "problems": "problems-2026.09.16.1",
+        "mistakes": "mistakes-2026.09.16.1",
+        "dag": "dag-2026.09.16.1",
+        "formula": "formula-2026.09.16.1",
+        "types": "types-2026.09.16.1"
+      },
+      "content_rev": "9c1f4a77b2e0"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "s1",
+          "item_id": "prob_bayes_0012",
+          "answer": "0.09",
+          "expected_conclusion": "判定为对，级别 A"
+        },
+        {
+          "case_id": "s2",
+          "item_id": "prob_bayes_0012",
+          "answer": "P(B|A)",
+          "expected_conclusion": "判定为错，且命中 mp_direction_reversed"
+        },
+        {
+          "case_id": "s3",
+          "item_id": "prob_expect_0007",
+          "answer": "E(X)=1",
+          "expected_conclusion": "判定为对，answer_kind=text 允许表达误差"
+        }
+      ]
+    }
+  ],
+  "x-illustrative-examples": {
+    "description": "★ **片段，不是完整文件** —— 它们小于各自资产的规模下界（题库 ≥ 30 · 公式库 ≥ 30 · 注入集 20/20），因此**不能放 `examples`**（`docs/04 §4` 要求 `examples` 必须通过自校验）。放这里是为了让人看清条目形状。",
+    "items": [
+      {
+        "asset": "formula",
+        "rev": "formula-2026.09.16.1",
+        "title": "公式库",
+        "items": [
+          {
+            "fm_id": "fm_bayes",
+            "name": "贝叶斯公式",
+            "latex": "P(A|B)=\\frac{P(B|A)P(A)}{P(B)}",
+            "kc_ids": [
+              "kc_bayes",
+              "kc_conditional_prob"
+            ],
+            "conditions": "P(B)>0，且 {A_i} 构成完备事件组时使用全概率形式。",
+            "counterexample": "P(B)=0 时无定义。"
+          }
+        ]
+      },
+      {
+        "asset": "problems",
+        "rev": "problems-2026.09.16.1",
+        "items": [
+          {
+            "prob_id": "prob_bayes_0012",
+            "stem": "某病发病率 1%，检测灵敏度 90%、特异度 90%，检出阳性者患病的概率是多少？",
+            "expected": "0.09",
+            "kc_ids": [
+              "kc_bayes"
+            ],
+            "pt_id": "pt_bayes_forward",
+            "gradable": true,
+            "answer_kind": "value",
+            "difficulty": 3
+          }
+        ]
+      },
+      {
+        "version": "frozen-2026.09.16",
+        "frozen_at": "2026-09-16",
+        "solution_injection": {
+          "cases": [
+            {
+              "case_id": "si_01",
+              "item_id": "prob_bayes_0012",
+              "wrong_solution": "把 P(A|B) 与 P(B|A) 对调后代入。",
+              "ab_reachable": true,
+              "category": "direction_reversed",
+              "expected": "recompute_mismatch"
+            }
+          ]
+        },
+        "answer_injection": {
+          "cases": [
+            {
+              "case_id": "ai_01",
+              "item_id": "prob_bayes_0012",
+              "answer": "P(B|A)",
+              "expected_mistake_ids": [
+                "mp_direction_reversed"
+              ],
+              "category": "direction_reversed",
+              "negative": false
+            },
+            {
+              "case_id": "ai_21",
+              "item_id": "prob_bayes_0012",
+              "answer": "这道题我不会",
+              "expected_mistake_ids": [],
+              "category": "direction_reversed",
+              "negative": true
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

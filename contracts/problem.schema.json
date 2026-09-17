@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/problem.schema.json",
+  "title": "题目（Problem · API 视图）",
+  "description": "`GET /api/problems` 返回的**题目视图**（列表用 C2 的 `pagination` 信封包住，`items` 收紧为本形状 —— 见 `docs/04 §4` 的组合方式）。★ **本视图是「资产」与「视图」必须分开的第一处理由**：题库资产 `content/problems.json` 里的条目**含 `expected`（标准答案）与 `solution`（解析）**，而**视图一个都不能带**。★ 只把答案藏在界面里不叫防护：**只要列表接口带上标准答案，前端不显示就只是「没做」，谁都能直接读接口**（`docs/02 §4.3-5`，§5 伦理约束在 UI 之下同样是敞开的）。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["prob_id", "stem", "kc_ids", "pt_id", "answer_kind", "difficulty"],
+  "properties": {
+    "prob_id": {
+      "type": "string",
+      "pattern": "^prob_[a-z0-9_]+$"
+    },
+    "stem": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "description": "题干。★ 它是学生**唯一该看到**的题目内容。"
+    },
+    "kc_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^kc_[a-z0-9_]+$"
+      },
+      "description": "知识点标注。★ 展示它是安全的（它不含解法），而且它是错题本的分类入口。"
+    },
+    "pt_id": {
+      "type": "string",
+      "pattern": "^pt_[a-z0-9_]+$",
+      "description": "题型 ID。★ **只给 ID，不给题型的 `framework`** —— 解法框架是「帮助」，属于提示阶梯的地盘（见 `x-exposure`）。"
+    },
+    "answer_kind": {
+      "type": "string",
+      "enum": ["value", "text"],
+      "description": "答案类型。★ **它不是答案**：`text` 只表示「含单位或文字结论」，因此前端可以据此提示「这道题要写文字」，而不泄露答案。"
+    },
+    "difficulty": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    }
+  },
+  "x-exposure": {
+    "description": "★ **本视图刻意不含的三个东西，以及它们各自去哪** —— 这一节是本契约存在的主要理由。",
+    "forbidden": {
+      "expected": "标准答案。**不得出现在任何列表 / 详情接口**（`docs/02 §4.3-5`）。它只在两处出现：题库资产里（作者可见）与 `POST /api/practice/grade` 之后（且那时以快照形态落进 `attempt.expected`）。",
+      "solution": "解析。★ 它是**提示阶梯的最后一格**：`docs/02 §4.3-③` 与 `§5.2` 写死「**未提交前不得返回完整解析**，完整解析只在 `grade` 之后可取」。因此它**只出现在 `attempt.schema.json` 的 `gradeResult` 里** —— 本视图带上它就等于把阶梯拆了。",
+      "decomposition": "F17 的**结构化拆解**（已知 / 所求 / 适用模型）。★ 这一条是**本轮才发现**的：把它放进题目列表会**绕过提示阶梯** —— 「适用模型」正是「先给方向」那一级提示的内容（`docs/01` §5 的伦理约束要求「把结论放在过程之后」）。因此它的形状与 transport 随 `hint` / `chat` 契约一并落，**不在这里**。见 `docs/04 §9` 缺口 4。"
+    }
+  },
+  "x-composition": {
+    "description": "列表响应的组合方式（与 `docs/04 §4` 一致）。",
+    "pattern": "{\"allOf\": [{\"$ref\": \"pagination.schema.json\"}, {\"properties\": {\"items\": {\"items\": {\"$ref\": \"problem.schema.json\"}}}}]}"
+  },
+  "examples": [
+    {
+      "prob_id": "prob_bayes_0012",
+      "stem": "某病发病率 1%，检测灵敏度 90%、特异度 90%，检出阳性者患病的概率是多少？",
+      "kc_ids": ["kc_bayes", "kc_conditional_prob"],
+      "pt_id": "pt_bayes_forward",
+      "answer_kind": "value",
+      "difficulty": 3
+    },
+    {
+      "prob_id": "prob_expect_0007",
+      "stem": "某随机变量 X 的密度函数为 f(x)=2x（0<x<1），求 E(X)。",
+      "kc_ids": ["kc_random_variable", "kc_expectation"],
+      "pt_id": "pt_expectation_integral",
+      "answer_kind": "text",
+      "difficulty": 2
+    }
+  ]
+}
