@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/pagination.schema.json",
+  "title": "游标分页（Cursor Pagination）",
+  "description": "所有**列表**端点的请求约束与响应信封。★ 为什么不用 offset：问答流水与作答记录是**追加写**的表，翻页时新记录插入会让 offset 漂移 —— 同一条记录被读到两次、或某条被整页跳过。这对「错题本复习」是真实伤害（学生会以为自己少做了几道）。本文件的**根**就是一个**响应信封**，资源契约用 `allOf` 组合它、并把 `items` 收紧为该资源的条目形状。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items", "next_cursor"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "本页的条目。★ **资源契约必须用 `allOf` 把 `items` 收紧成自己的条目形状**（例如 `attempt.schema.json` 的作答记录）—— **不要把条目形状内联进本文件**，否则同一形状会有两处记载。"
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/cursor"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "下一页的游标；**没有下一页时必须是 `null`**（不是空串、不是省略）。★ 空列表的语义是「`items: []` 且 `next_cursor: null`」—— 前端据此区分「没有数据」与「后端忘了给游标」。"
+    }
+  },
+  "definitions": {
+    "cursor": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "不透明字符串，内部是 `created_at` + `id` 的编码（见 `x-cursor-encoding`）。★ **客户端不得解析它**，服务端也必须**校验它可解码** —— 不校验就是一个注入面（`docs/02 §6.1` 的 R-A 把它列为必设上界的字段之一）。"
+    },
+    "pageRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "**查询参数**的形状（不是请求体）。字段级上界由 `docs/02 §6.1` 的 R-A 表规定，本定义只给取值范围。",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "description": "每页条数。默认 20，上界 100。★ **超界即 400 `invalid_argument`，不静默截断** —— 静默截断会让「我明明要了 200 条」变成一个查不出来的行为差异。"
+        },
+        "cursor": {
+          "$ref": "#/definitions/cursor"
+        }
+      }
+    }
+  },
+  "x-cursor-encoding": {
+    "description": "游标的内部编码。**这是服务端实现细节**，写在这里是为了让「客户端不得解析」这条纪律有依据可查。",
+    "fields": ["created_at", "id"],
+    "opaque_to_client": true,
+    "must_be_decodable_by_server": true
+  },
+  "x-sort-order": {
+    "description": "所有列表端点一律 `created_at DESC, id DESC` —— **稳定序**。只按 `created_at` 排序时，同一秒写入的多条记录顺序不确定，翻页会重复或漏项。",
+    "value": "created_at DESC, id DESC"
+  },
+  "x-composition": {
+    "description": "资源契约的组合方式。`allOf` 同时满足本文件的约束与该资源的 `items` 约束，因此**不需要**任何继承机制或代码生成。",
+    "pattern": "{\"allOf\": [{\"$ref\": \"pagination.schema.json\"}, {\"properties\": {\"items\": {\"items\": {\"$ref\": \"<resource>.schema.json\"}}}}]}"
+  },
+  "examples": [
+    {
+      "items": [
+        {
+          "id": "att_0001"
+        },
+        {
+          "id": "att_0002"
+        }
+      ],
+      "next_cursor": "eyJ0IjoxNzg5NTQzMDI3LjgxLCJpZCI6ImF0dF8wMDAyIn0"
+    },
+    {
+      "items": [],
+      "next_cursor": null
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/error.schema.json",
+  "title": "统一错误体（ErrorEnvelope）",
+  "description": "所有非 2xx 响应体的唯一形状。旧仓每个接口各写各的形状（有时是字符串、有时是对象、有时干脆是 500），前端只能按形状猜 —— 本契约是前端写出一套错误处理的前提。★ 三条纪律，全部由本文件的结构钉死：① `code` 是机器读的稳定标识，前端**按 code 分支**而不是按 message；② `message` 是给人看的中文，**不得含内部路径 / SQL / 堆栈 / 凭据**；③ `detail` 不得放敏感值 —— 尤其**不得放模型凭据**（这是 R-M 的第 ③ 面「凭据不得进错误信息」的机器可读形式）。★ 语义权威（**触发条件**与**前端行为**）在 `docs/02 §6.3`；本文件只固定「`code` 的取值集合」与「`code` ↔ HTTP 状态」的对应，两者由门禁对账（`docs/04 §7` 校验④）。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/errorCode"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "给人看的中文说明。不得含内部路径 / SQL / 堆栈 / 凭据。前端可以直接显示它，但**分支判断必须按 code**。"
+        },
+        "detail": {
+          "type": "object",
+          "description": "可选的结构化补充（哪个字段错了、缺什么）。★ **不得放敏感值**：`propertyNames` 把常见的敏感键名直接排除掉 —— 这是「凭据不得进错误信息」的可机检形式。",
+          "propertyNames": {
+            "not": {
+              "pattern": "(?i)(key|token|secret|password|passwd|credential|authorization|api_?key)"
+            }
+          },
+          "additionalProperties": true,
+          "examples": [
+            {
+              "field": "password",
+              "reason": "too_short"
+            },
+            {
+              "field": "limit",
+              "reason": "above_max",
+              "max": 100
+            }
+          ]
+        }
+      }
+    }
+  },
+  "definitions": {
+    "errorCode": {
+      "type": "string",
+      "description": "机器读的稳定标识。★ **只增不改**：含义不得改变，废弃的取值标注 `deprecated` 而**不删除**（否则旧客户端会掉进未知分支）。★ **已废弃的 `model_unavailable` 不入本枚举** —— 它在 v2 实现之前就被拆成 `model_key_missing` 与 `model_unreachable`（`ADR-0005 §5`），**新仓没有历史包袱**，把它收进枚举只会让前端写出永远走不到的死分支。",
+      "enum": [
+        "invalid_argument",
+        "unauthenticated",
+        "bad_credentials",
+        "forbidden",
+        "must_change_pw",
+        "account_disabled",
+        "not_found",
+        "conflict",
+        "locked",
+        "internal_error",
+        "dependency_unavailable",
+        "model_key_missing",
+        "model_unreachable",
+        "model_key_invalid",
+        "model_quota_exceeded",
+        "server_busy"
+      ]
+    }
+  },
+  "x-http-status-by-code": {
+    "description": "`code` ↔ HTTP 状态的对应。与 `docs/02 §6.3` 的表逐项一致，由门禁对账。★ 两条被它变成**可断言**的纪律：（a）**401 只用于身份问题** —— 「模型凭据无效」是 **400**，因为它是客户端可修的输入问题，而前端收到 401 的既定行为是「清令牌 + 跳登录」，把凭据错误标成 401 会**把用户登出**；（b）**`must_change_pw` 是 403 而不是 `forbidden`** —— 前者要跳设置页改密，后者的语义是角色不足。",
+    "invalid_argument": 400,
+    "unauthenticated": 401,
+    "bad_credentials": 401,
+    "forbidden": 403,
+    "must_change_pw": 403,
+    "account_disabled": 403,
+    "not_found": 404,
+    "conflict": 409,
+    "locked": 423,
+    "internal_error": 500,
+    "dependency_unavailable": 503,
+    "model_key_missing": 503,
+    "model_unreachable": 503,
+    "model_key_invalid": 400,
+    "model_quota_exceeded": 402,
+    "server_busy": 503
+  },
+  "examples": [
+    {
+      "error": {
+        "code": "unauthenticated",
+        "message": "未登录或登录已过期，请重新登录"
+      }
+    },
+    {
+      "error": {
+        "code": "invalid_argument",
+        "message": "密码长度不足",
+        "detail": {
+          "field": "password",
+          "reason": "too_short"
+        }
+      }
+    },
+    {
+      "error": {
+        "code": "model_key_missing",
+        "message": "未配置模型凭据，请到设置页填写"
+      }
+    },
+    {
+      "error": {
+        "code": "server_busy",
+        "message": "当前同时答题的同学较多，请稍后重试"
+      }
+    },
+    {
+      "error": {
+        "code": "must_change_pw",
+        "message": "请先修改密码"
+      }
+    }
+  ]
+}

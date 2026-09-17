@@ -1,0 +1,455 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/user.schema.json",
+  "title": "账号（Account）",
+  "description": "登录账号的对外视图。**任何接口都不得返回 password_hash** —— 本契约用 additionalProperties:false 把这条钉死：往响应里加字段会直接违反契约。账号是权限的唯一来源（服务端 identity/），前端藏菜单不算权限。★ 本文件**搬运自旧仓 `contracts/user.schema.json`**（ADR-0003 决策 1 指定的唯一搬运契约），**形状逐字保留**，只做「只增不改」允许的增量 —— 增量清单见 `x-v2-deviations`。",
+  "version": "v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["user_id", "username", "display_name", "role", "status", "created_at"],
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "pattern": "^usr_([0-9a-f]{12}|history)$",
+      "description": "账号主键。普通账号形如 usr_ab12cd34ef56。★ usr_history 是旧仓迁移过来的匿名老数据的归属壳；**v2 不迁旧数据**（见 `x-v2-deviations`），因此该取值在 v2 **恒不出现** —— 保留它是为了不改形状，不是为了留后门。"
+    },
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 32,
+      "description": "登录名。3–32 位，只允许 [A-Za-z0-9_.-]；中文显示名请用 display_name。大小写不敏感（COLLATE NOCASE）唯一。★ **复用规则（v2 增量）**：账号被删除后 username 改为 deleted_<8hex>，**原 username 可以再次被注册**（不引入「退休用户名表」）—— 因为 user_id 不复用，且教师视角靠 user_id 后 8 位区分同名。"
+    },
+    "display_name": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "给人看的名字（可中文）。学生被删除数据后会被清空。"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["student", "admin"],
+      "description": "角色。admin **只能**由启动种子流程或用户管理 CLI 创建 —— 管理端接口与批量导入都无法创建管理员（防提权）。"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "disabled", "deleted"],
+      "description": "active 正常；disabled 被管理员停用（登录时在**密码验证通过之后**返回 403 account_disabled，且已发令牌立即失效）；deleted 数据被删除后的脱敏壳（username 已改为 deleted_xxxxxxxx、password_hash 置空串、令牌全撤）。"
+    },
+    "created_at": {
+      "type": "number",
+      "description": "创建时间（epoch 秒，float）"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "创建者 user_id；'seed' = 启动时自动建的种子管理员；'cli' = 命令行建的；'migration' = 旧仓迁移脚本建的历史账号。★ **v2 不含迁移，因此 'migration' 恒不出现**（保留取值是为了不改形状）。"
+    },
+    "last_login_at": {
+      "type": ["number", "null"],
+      "description": "最近一次登录成功的时间（epoch 秒）；从未登录为 null。"
+    },
+    "must_change_pw": {
+      "type": "boolean",
+      "default": false,
+      "description": "★ **v2 新增**。管理员重置密码后置位 ⇒ **只放行 POST /api/auth/password**，其余学习类接口一律 403 `must_change_pw`（**不复用 `forbidden`**：那个 code 的语义是角色不足，混用会让前端把「去改密码」显示成「无权访问」）。改密成功后清位，并撤销该用户全部令牌。★ 为什么它必须由服务端在每个请求上判定：管理员重置密码的**唯一意义**是「学生必须自己换一个密码」；若这个位只在登录响应里回一次、由前端决定跳不跳，直接调任意学习类接口就绕过去了，于是**管理员始终知道学生的密码**。"
+    },
+    "notice_ack_at": {
+      "type": ["number", "null"],
+      "description": "★ **v2 新增**（N15 外传告知）。该账号**最后一次**确认「提问会被发送到第三方模型服务」的时间（epoch 秒）；从未确认为 null。★ **为什么落服务端而不是浏览器**：只存浏览器的话，**换台机器就不再告知**，而机房换机器是最常见情形。账号被删除时随脱敏清空。"
+    }
+  },
+  "definitions": {
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["token", "expires_at", "user"],
+      "description": "登录成功的会话。★ **明文 token 只在这一个响应里出现一次** —— 库里只存 sha256，因此它不可被再次读出（库被拿走 ≠ 所有会话被劫持）。后续请求一律走 `Authorization: Bearer <token>`。",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 128,
+          "description": "会话令牌明文（`secrets.token_urlsafe(32)`）。服务端只存它的 sha256。"
+        },
+        "expires_at": {
+          "type": "number",
+          "description": "到期时刻（epoch 秒）。v2 的有效期为 7 天，且可即时撤销。"
+        },
+        "user": {
+          "$ref": "#"
+        }
+      }
+    },
+    "loginRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["username", "password"],
+      "description": "登录请求体。★ **信息量不变量**：在密码通过之前，一切失败都返回同一个 401 `bad_credentials`，且都烧等长的时间 —— 因此 request 里**不能有任何能区分「用户不存在」与「密码错误」的字段**（例如 `exists` 之类）。",
+      "properties": {
+        "username": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 32
+        },
+        "password": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 72,
+          "description": "★ 上界 72 是 **bcrypt 的输入上限**，按**字节**计（前端应按 UTF-8 字节数校验，而不是字符数）。"
+        }
+      }
+    },
+    "passwordChangeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["old_password", "new_password"],
+      "description": "改密请求体。成功后会**撤销该用户全部令牌**（改完密码旧令牌还能用，等于没改）—— 前端必须重新登录。",
+      "properties": {
+        "old_password": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 72
+        },
+        "new_password": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 72,
+          "description": "★ 下限策略（强度要求）**不在 v2 契约内**，由 `identity/` 的实现决定；此处只约定 bcrypt 的 72 字节上界。这是如实登记，不是遗漏。"
+        }
+      }
+    },
+    "noticeStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ask", "egress", "provider", "model", "payload_fields", "ack_at"],
+      "description": "`GET /api/me/notice` 的响应：**这次要不要告知，以及告知什么**。★ 本形状把 N15 的三项内容做成**数据驱动的**（去向 · 载荷范围 · 是否已确认），因此「告知文案随去向变化」不需要三套硬编码文案。★ **判据是去向（`egress`），不是部署形态**：单机形态包含 P2（单机 + 远程端点），按形态判会让这台机器上的学生看到「数据不发往第三方」，而提问正文**正在**发往第三方。",
+      "properties": {
+        "ask": {
+          "type": "boolean",
+          "description": "本次是否需要向用户显示告知并等待确认。**每账号一次**：`ack_at` 非 null 时为 false。"
+        },
+        "egress": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["loopback", "remote"]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "当前去向。`loopback` = 本机端点（不发往第三方）· `remote` = 远程端点（**会外传**）· `null` = 无凭据（P3，尚未发生任何调用）。"
+        },
+        "provider": {
+          "type": ["string", "null"],
+          "maxLength": 32,
+          "description": "供应商名（如 deepseek / qwen / glm / custom）；无凭据时为 null。它进告知文案 —— 「说清数据去了哪」是 N2 诚实的一部分。"
+        },
+        "model": {
+          "type": ["string", "null"],
+          "maxLength": 128,
+          "description": "模型名；无凭据时为 null。"
+        },
+        "payload_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "description": "★ **载荷范围**（N15 要求告知的内容之一）。由服务端按 `docs/02 §1.5④` 的**正向白名单**给出（提问原文 · 上下文 · 系统提示 · L0 资产片段），**不含凭据**（凭据是请求头，不是载荷 —— R-M 第 ⑦ 面）。做成数组而不是一句话，是为了让它可被断言（N16 验收③ 用假 provider 抓载荷比对）。"
+        },
+        "ack_at": {
+          "type": ["number", "null"],
+          "description": "该账号已确认的时刻（服务端 `student_user.notice_ack_at`）；未确认为 null。"
+        }
+      }
+    },
+    "noticeAckRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ack"],
+      "description": "`POST /api/me/notice` 的请求体。★ **只能置位、不能清除** —— 清除告知记录不属于任何需求（用户「撤回知情」在语义上不成立）。",
+      "properties": {
+        "ack": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "deleteResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "status",
+        "deleted_rows",
+        "tokens_deleted",
+        "audit_rows_retained",
+        "logs_in_scope",
+        "third_party_irrevocable"
+      ],
+      "description": "`DELETE /api/me/data` 的响应：**F16 的四类处置 + 两条边界**。★ 本形状的价值在于把「删除」变成**可读回的数字**而不是「没报错」—— 旧仓的失败模式正是「测试只断言 HTTP 200」。",
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "const": "deleted",
+          "description": "删除后账号处于**脱敏态**（行保留、不可登录），而不是物理删除。"
+        },
+        "deleted_rows": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["qa_log", "hint_log", "attempt", "mastery"],
+          "description": "四张 per-user 数据表**删除后逐表读回的行数**。★ **必须全为 0** —— 这就是 F16 的验收断言本身。",
+          "properties": {
+            "qa_log": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hint_log": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mastery": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "tokens_deleted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "级联删除的会话令牌行数。删除后**该用户不得再登录**（空哈希）。"
+        },
+        "audit_rows_retained": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "★ **保留**的审计行数（已裁定：审计是「管理员看过谁的数据」的合规证据，删掉它等于删掉监督记录）。审计**只记 ID 与动作**（R-O），因此保留它不等于保留可识别信息。"
+        },
+        "logs_in_scope": {
+          "type": "boolean",
+          "const": false,
+          "description": "★ 恒为 false —— **显式声明删除范围不含日志文件**（`docs/01 §6` 原文要求「显式声明」）。理由：日志按 R-O 只记 ID 与动作，**内容本来就不落盘**；若日志记了内容，「删除」就只删了数据库那一份。"
+        },
+        "third_party_irrevocable": {
+          "type": "boolean",
+          "const": true,
+          "description": "★ 恒为 true —— **第三方模型服务已经收到的请求删不掉**（F16 的边界句）。把它做成响应里的必填字段，是为了**逼前端与告知文案同屏声明它**：否则「删除权」是虚的。"
+        }
+      }
+    },
+    "adminUserRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "username",
+        "display_name",
+        "role",
+        "status",
+        "created_at",
+        "last_login_at",
+        "failed_count",
+        "locked_until",
+        "active_tokens",
+        "must_change_pw"
+      ],
+      "description": "`GET /api/admin/users` 的行：**账号管理**视角（角色 / 状态 / 锁定 / 令牌）。★ 它与 `GET /api/admin/students` 的**数据视图**是两个端点、两件事（前者管账号，后者看学习数据），**不要合并**。",
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["student", "admin"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "disabled", "deleted"]
+        },
+        "created_at": {
+          "type": "number"
+        },
+        "last_login_at": {
+          "type": ["number", "null"]
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "连续登录失败次数（达到 5 次锁定 60 秒）。"
+        },
+        "locked_until": {
+          "type": ["number", "null"],
+          "description": "锁定解除时刻（epoch 秒）；未锁定为 null。"
+        },
+        "active_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "★ **派生字段（不是列）**：未撤销且未过期的令牌数量，由 `student_token` 计数得出。管理员据此判断「这孩子手机丢了」要不要一键全撤。"
+        },
+        "must_change_pw": {
+          "type": "boolean"
+        }
+      }
+    },
+    "adminPasswordResetResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_id", "must_change_pw", "tokens_revoked", "audit_written"],
+      "description": "`PATCH /api/admin/users/{id}` 重置密码的结果。★ 三件事**全部**是重置密码的组成部分，因此**全部**是必填且取值固定 —— 少任何一件，重置密码这个功能就是「管理员知道学生的密码」。",
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "must_change_pw": {
+          "type": "boolean",
+          "const": true,
+          "description": "强制下次登录改密（`docs/02 §5.3` 的自环）。"
+        },
+        "tokens_revoked": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "撤销该用户全部令牌的数量 —— 不撤销的话，学生手上的旧会话仍然是有效的。"
+        },
+        "audit_written": {
+          "type": "boolean",
+          "const": true,
+          "description": "写审计（谁在何时改了谁的密码）。"
+        }
+      }
+    },
+    "adminImportRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows"],
+      "description": "`POST /api/admin/users/import` 的请求体。★ `additionalProperties: false` 在这里**不是风格，是制度**：它让 **学号 / 真实姓名这类 PII 字段在契约层就传不进来**（N6 化名账号、无 PII）。role 不在请求里 —— 导入**只能建 student**。",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["username", "password"],
+            "properties": {
+              "username": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 32
+              },
+              "password": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 72
+              },
+              "display_name": {
+                "type": "string",
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      }
+    },
+    "adminImportResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created", "rejected", "role"],
+      "properties": {
+        "created": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "array",
+          "description": "逐行拒绝原因（用户名重复 / 超长 / 格式不符）。★ **不得静默跳过**：静默跳过的名单问题会在「学生说登不上」时才发现。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["row", "reason"],
+            "properties": {
+              "row": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 200
+              }
+            }
+          }
+        },
+        "role": {
+          "type": "string",
+          "const": "student"
+        }
+      }
+    }
+  },
+  "x-v2-deviations": {
+    "description": "★ 本文件相对旧仓基线的全部差异，逐条登记（「只增不改」的合规证明）。**没有删改任何旧字段**。",
+    "baseline": "旧仓 contracts/user.schema.json（ADR-0003 决策 1 指定搬运）",
+    "additive": [
+      "must_change_pw（新字段，默认 false）",
+      "notice_ack_at（新字段，默认 null）",
+      "definitions.session / loginRequest / passwordChangeRequest（会话与账号动作）",
+      "definitions.noticeStatus / noticeAckRequest（N15 告知的读写形状）",
+      "definitions.deleteResult（F16 的四类处置 + 两条边界）",
+      "definitions.adminUserRow / adminPasswordResetResult / adminImportRequest / adminImportResult（账号管理）",
+      "username 的复用规则写进 description（口径澄清，非语义变更）"
+    ],
+    "not_used_in_v2": [
+      "user_id 取值 usr_history —— v2 不迁旧数据",
+      "created_by 取值 'migration' —— 同上"
+    ],
+    "rationale": "★ 为何不删除上面两个取值：契约是**只增不改**的（改字段名 / 删枚举值属破坏性变更，须走 ADR）。但**保留形状不等于保留谎言** —— 因此两个取值的 description 都明确写了「v2 恒不出现」，避免读者以为存在历史账号。"
+  },
+  "examples": [
+    {
+      "user_id": "usr_ab12cd34ef56",
+      "username": "s01",
+      "display_name": "张三",
+      "role": "student",
+      "status": "active",
+      "created_at": 1789543027.81,
+      "created_by": "usr_9f8e7d6c5b4a",
+      "last_login_at": 1789543900.12,
+      "must_change_pw": false,
+      "notice_ack_at": 1789543901.55
+    },
+    {
+      "user_id": "usr_ab12cd34ef56",
+      "username": "deleted_1a2b3c4d",
+      "display_name": "",
+      "role": "student",
+      "status": "deleted",
+      "created_at": 1789543027.81,
+      "created_by": "cli",
+      "last_login_at": 1789543900.12,
+      "must_change_pw": false,
+      "notice_ack_at": null
+    },
+    {
+      "user_id": "usr_00112233aabb",
+      "username": "s07",
+      "display_name": "李四",
+      "role": "student",
+      "status": "active",
+      "created_at": 1789543027.81,
+      "created_by": "cli",
+      "last_login_at": null,
+      "must_change_pw": true,
+      "notice_ack_at": null
+    }
+  ]
+}
