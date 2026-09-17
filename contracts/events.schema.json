@@ -1,0 +1,792 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/events.schema.json",
+  "title": "答疑事件协议（SSE Frame · 14 类）",
+  "description": "答疑链路（`POST /api/chat`）的流式事件协议：**帧信封 + 14 类事件的 payload 形状**。★ `docs/02 §6.5` 把「14 类」这件事推给了本契约（「帧格式与 14 类事件由 `events.schema.json` 定义（A3）」），因此**本文件是事件词汇表的唯一权威**。★ 本文件是**重写**（`ADR-0003` 决策 1 的搬运清单里只有 `user.schema.json`）；相对旧仓有三处**必须**改名，各带依据（见 `x-rename-from-old`）。★ 帧形状与旧仓**根本不同**：旧仓是**扁平**的（`type` + `ts` + 二十多个可选字段平铺顶层），v2 是 `docs/02 §4.2` 写死的**嵌套 payload**。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["seq", "type", "ts", "payload"],
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "★ 单调递增整数。**只用于去重，不承担「断流续传」** —— 服务端**不做重放缓冲**，断流语义是**重新发起**（会重跑一次图，`docs/02 §4.2-1`）。★ 这条曾经在同一篇文档里自相矛盾（§6.5 说「断流续传与去重的唯一依据」，§8-11 说「按 seq 续传」），2026-09-16 已统一到「只去重」。"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "run.start",
+        "context.resolved",
+        "plan",
+        "node.start",
+        "node.delta",
+        "tool.call",
+        "tool.result",
+        "artifact",
+        "node.end",
+        "verification.report",
+        "hitl.request",
+        "hitl.resolved",
+        "done",
+        "error"
+      ],
+      "description": "事件类型，**恰好 14 类**。★ 前端对**未知类型必须静默忽略** —— 这是「只增不改」能成立的前提（旧仓原文）。"
+    },
+    "ts": {
+      "type": "number",
+      "description": "产生时刻（epoch 秒，float）。"
+    },
+    "payload": {
+      "type": "object",
+      "description": "事件内容。★ **形状由 `type` 决定** —— 绑定关系见本文件的 `oneOf`（不是「一个大对象里所有字段都可选」：那样契约会无法回答「这个字段在哪类事件里必填」）。"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "run.start",
+      "properties": {
+        "type": {
+          "const": "run.start"
+        },
+        "payload": {
+          "$ref": "#/definitions/runStartPayload"
+        }
+      }
+    },
+    {
+      "title": "context.resolved",
+      "properties": {
+        "type": {
+          "const": "context.resolved"
+        },
+        "payload": {
+          "$ref": "#/definitions/contextResolvedPayload"
+        }
+      }
+    },
+    {
+      "title": "plan",
+      "properties": {
+        "type": {
+          "const": "plan"
+        },
+        "payload": {
+          "$ref": "#/definitions/planPayload"
+        }
+      }
+    },
+    {
+      "title": "node.start",
+      "properties": {
+        "type": {
+          "const": "node.start"
+        },
+        "payload": {
+          "$ref": "#/definitions/nodeStartPayload"
+        }
+      }
+    },
+    {
+      "title": "node.delta",
+      "properties": {
+        "type": {
+          "const": "node.delta"
+        },
+        "payload": {
+          "$ref": "#/definitions/nodeDeltaPayload"
+        }
+      }
+    },
+    {
+      "title": "tool.call",
+      "properties": {
+        "type": {
+          "const": "tool.call"
+        },
+        "payload": {
+          "$ref": "#/definitions/toolCallPayload"
+        }
+      }
+    },
+    {
+      "title": "tool.result",
+      "properties": {
+        "type": {
+          "const": "tool.result"
+        },
+        "payload": {
+          "$ref": "#/definitions/toolResultPayload"
+        }
+      }
+    },
+    {
+      "title": "artifact",
+      "properties": {
+        "type": {
+          "const": "artifact"
+        },
+        "payload": {
+          "$ref": "#/definitions/artifactPayload"
+        }
+      }
+    },
+    {
+      "title": "node.end",
+      "properties": {
+        "type": {
+          "const": "node.end"
+        },
+        "payload": {
+          "$ref": "#/definitions/nodeEndPayload"
+        }
+      }
+    },
+    {
+      "title": "verification.report",
+      "properties": {
+        "type": {
+          "const": "verification.report"
+        },
+        "payload": {
+          "$ref": "#/definitions/verificationReportPayload"
+        }
+      }
+    },
+    {
+      "title": "hitl.request",
+      "properties": {
+        "type": {
+          "const": "hitl.request"
+        },
+        "payload": {
+          "$ref": "#/definitions/hitlRequestPayload"
+        }
+      }
+    },
+    {
+      "title": "hitl.resolved",
+      "properties": {
+        "type": {
+          "const": "hitl.resolved"
+        },
+        "payload": {
+          "$ref": "#/definitions/hitlResolvedPayload"
+        }
+      }
+    },
+    {
+      "title": "done",
+      "properties": {
+        "type": {
+          "const": "done"
+        },
+        "payload": {
+          "$ref": "#/definitions/donePayload"
+        }
+      }
+    },
+    {
+      "title": "error",
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "payload": {
+          "$ref": "#/definitions/errorPayload"
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "runStartPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "session_id", "query"],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "本次运行的标识。★ 它是**内存态**：进程重启后 `GET /api/runs/{id}` 返回 404（`docs/02 §6.1` 的 run 生命周期已裁定），**不做持久化**。"
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "提问原文（上界与 `docs/02 §6.1` 的 R-A 表一致）。★ 它是**会被发往第三方模型端点**的字段之一（N14 / N15），因此它同时是告知文案里「载荷范围」的一项。"
+        }
+      }
+    },
+    "contextResolvedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "reason"],
+      "description": "★ **改名自旧仓的 `context.received`**，理由见 `x-rename-from-old`：旧 payload 里的 `title` / `chars` / `formula_count` / `frame_count` / `outline` 是**探针页面**的字段，而 v2 没有探针。★ 本事件的职责是让 **F1 的「无上下文时**显式降级**而非静默**」可被断言。",
+      "properties": {
+        "context": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text"],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "maxLength": 4000,
+                  "description": "上下文正文（可含教材片段）。★ 上界 4000 与 R-A 表一致 —— 它比 `query` 更危险：F1 明确要求「无上下文时显式降级」，因此它是**常用路径**，也是最容易被塞进大对象的参数。"
+                },
+                "refs": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "description": "上下文标识（F1 要求「提问请求必须携带至少一个上下文标识」）。★ 形状**按构造把嵌套深度锁死在 2 层**（`context` → `refs[]` → 标量），因此 R-A 表的「嵌套深度 ≤ 3」自动成立。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind", "id"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["problem", "kc", "corpus"],
+                        "description": "上下文来源的类型：题目 / 知识点 / 教材片段（`docs/01` §7 的「主站内上下文」三项）。"
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "解析后的上下文；**确实没有上下文时必须是 `null`**（而不是省略字段）—— 省略会让「没给」与「后端忘了发」无法区分。"
+        },
+        "reason": {
+          "type": ["string", "null"],
+          "maxLength": 200,
+          "description": "`context` 为 `null` 时的**原因**（F1 的「显式降级而非静默」就落在这个字段上）；有上下文时为 `null`。"
+        }
+      }
+    },
+    "planPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent", "steps"],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "enum": ["solve", "explain", "lookup", "visualize"],
+          "description": "★ 四个意图是 `docs/02 §4.2` 的路由枚举。**只有 `solve` 是「解答」** —— F2 的「步骤数 ≥ 3」只约束它，`explain` / `lookup` / `visualize` 不受约束（否则脚本会把讲解类回答当解答判）。"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["node", "label"],
+            "properties": {
+              "node": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          },
+          "description": "计划执行的节点序列。★ 字段名由 `agent` 改为 **`node`**（见 `x-rename-from-old`）：`docs/03 §7①` 的扩展点叫「新增一个**图节点**」，且 F13（协作可见）是 MAY、未排期 —— 用 `agent` 会让契约承诺一个未排期的能力。"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "nodeStartPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node"],
+      "properties": {
+        "node": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 64
+        }
+      }
+    },
+    "nodeDeltaPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "text"],
+      "properties": {
+        "node": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "text": {
+          "type": "string",
+          "description": "增量文本片段（LLM 吐出的一段）。★ 它是**流式的**：不要把整段回答塞进一帧 —— 那会同时破坏首字延迟（N7）与断流重发的代价。"
+        }
+      }
+    },
+    "toolCallPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool"],
+      "properties": {
+        "node": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "args": {
+          "type": "object",
+          "description": "调用参数。★ 它与 `tool.result.data` 一起构成**排障的唯一线索** —— 因为 R-O 规定日志**只记 ID 与动作、不记内容**。"
+        }
+      }
+    },
+    "toolResultPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "ok"],
+      "description": "★ **R-Q 的落点**（`docs/02 §1.6` · `docs/03 §7②`）。旧仓把 `tool.result.ok` **硬编码为 `true`**，于是「工具失败不可见」成为一条真实的技术债（`docs/03 §9.2` 第 8 行）—— 本契约把 `ok` 设为**必填**，并在此写明它必须来自真实执行结果。",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "ok": {
+          "type": "boolean",
+          "description": "★ **必须来自真实执行结果，禁止硬编码**。工具失败**必须**通过它进入事件流，不得静默吞掉。"
+        },
+        "data": {
+          "type": ["object", "null"],
+          "description": "工具返回值；失败时为 `null`。"
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "artifactPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "payload"],
+      "description": "结构化产出。★ 与旧仓的关键差别：旧仓的 `oneOf` **没有把 `kind` 与 `payload` 绑定**（一个 `steps` 形状的 payload 配 `kind: \"animation\"` 也能通过校验）—— 本契约用 `kind` 的 `const` 逐支绑定。★ **F2 的结构断言住在 `kind=\"solution\"` 里**（`docs/02 §4.2-7` 说步骤数组出现在「SSE 的解答事件」—— 那个字段此前没有名字，现在它叫 `payload.steps`）。",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["solution", "explanation", "formula", "cite", "animation"],
+          "description": "产出类型。★ **新增 kind 属向后兼容扩展**（只增不改）。"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "title": "solution（solve 类解答）",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["steps"],
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "steps": {
+                  "type": "array",
+                  "minItems": 3,
+                  "description": "★ **`minItems: 3` 就是 F2 的结构断言**（「步骤数 ≥ 3」）。它只出现在本 kind 里 —— 讲解类（`explanation`）走另一支，因此**不会**被这条约束误判。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["explanation", "formula"],
+                    "description": "★ 每步的**两个字段都必须非空**（F2 的「每步含 {说明, 式子} 两字段非空」）。契约把它们命名为 `explanation` / `formula`（`docs/01` F2 与 `docs/02 §4.2-7` 里的「说明 / 式子」是中文简称）。",
+                    "properties": {
+                      "explanation": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      },
+                      "formula": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      }
+                    }
+                  }
+                },
+                "cite_id": {
+                  "type": ["string", "null"],
+                  "maxLength": 64,
+                  "description": "教材出处（F10）。**无命中时必须为 `null`**，不得凭记忆编造章节号。"
+                }
+              }
+            },
+            {
+              "title": "explanation（讲解类回答）",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["body"],
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8000
+                }
+              }
+            },
+            {
+              "title": "formula（公式 / 定理条目）",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["items"],
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "items": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["fm_id", "latex"],
+                    "properties": {
+                      "fm_id": {
+                        "type": "string",
+                        "pattern": "^fm_[a-z0-9_]+$",
+                        "maxLength": 64,
+                        "description": "公式条目 ID（`docs/02 §2.2` 的 `fm_<slug>`）。F18 要求「按名称返回**唯一条目**」，因此必须有稳定 ID，不能只靠名称字符串。"
+                      },
+                      "latex": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "conditions": {
+                        "type": "string",
+                        "maxLength": 300,
+                        "description": "适用条件（F18 明写「返回唯一条目且带**适用条件**」）。"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "title": "cite（教材出处）",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["items"],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["cite_id"],
+                    "properties": {
+                      "cite_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "quote": {
+                        "type": "string",
+                        "maxLength": 300
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "title": "animation（可视化，F12 为 MAY 未排期）",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "title"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "url": {
+                  "type": "string",
+                  "maxLength": 300,
+                  "description": "前端本地资源路径。★ **不得是外部 CDN** —— 与 N18 验收② 同一条断言（前端零外部脚本、凭据不存在跨站外发面）。"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "nodeEndPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "ok"],
+      "properties": {
+        "node": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "verificationReportPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["report", "ok"],
+      "description": "★ 报告形状**跨文件 `$ref` 到 `verification.schema.json`** —— 因此「级别是什么」只有一个权威。★ 本事件每答必发（F3「无标签不出结果」）。",
+      "properties": {
+        "report": {
+          "$ref": "verification.schema.json"
+        },
+        "ok": {
+          "type": "boolean",
+          "description": "报告是否通过（与 `report.passed` 一致；冗余一个顶层布尔是为了让前端不必解包就能分流）。"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "给人看的一句话摘要，**直接展示给用户**。"
+        }
+      }
+    },
+    "hitlRequestPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hitl_id", "options"],
+      "description": "图在 `interrupt()` 处挂起。★ 它与 `hitl.resolved` **必须成对**，且前端**必须有可见的挂起态** —— 否则用户面对一个永远不动的进度条（`docs/02 §4.2-5`）。★ 挂起**必须有超时**（时长由配置提供，`docs/02 §11.1-5`）。",
+      "properties": {
+        "hitl_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "node": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "draft": {
+          "type": "string",
+          "maxLength": 4000,
+          "description": "待人工确认的草稿。"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "description": "可选的处置动作。前端据此渲染按钮 —— **不得硬编码成两个写死的选项**。"
+        }
+      }
+    },
+    "hitlResolvedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "用户选择的动作（取自对应 `hitl.request` 的 `options`）。"
+        },
+        "final": {
+          "type": "string",
+          "maxLength": 8000,
+          "description": "人工确认后的最终内容（若该动作需要改稿）。"
+        }
+      }
+    },
+    "donePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "description": "★ **两个合法终帧之一**（`docs/02 §6.5-2`：终帧必须显式，让前端能区分「跑完了」与「网断了」，否则只能靠超时猜）。",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "uncertain"],
+          "description": "`ok` = 正常闭合；`uncertain` = **验证重算后仍不通过**，已按 `docs/02 §4.2-4` 降级输出（此时同一次运行里必有 `uncertain: true` 的验证报告）。★ 它**不是** `failed`：`docs/02 §5.1` 的 `failed` 是编排图状态机的状态，其对外表现是 `error` 帧。"
+        },
+        "final_answer": {
+          "type": "string",
+          "maxLength": 8000,
+          "description": "最终回答（`status=ok` 时应有）。"
+        }
+      }
+    },
+    "errorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "description": "★ **两个合法终帧之一**。`code` **跨文件 `$ref` 到 `error.schema.json` 的 `errorCode`** —— 于是「SSE 里的错误」与「HTTP 错误体里的错误」共用同一个枚举，**新增 `code` 只需改一处**。",
+      "properties": {
+        "code": {
+          "$ref": "error.schema.json#/definitions/errorCode"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "node": {
+          "type": "string",
+          "maxLength": 64
+        }
+      }
+    }
+  },
+  "x-rename-from-old": {
+    "description": "★ 相对旧仓 `events.schema.json` 的**三处改名**，逐条给依据。三处都不是风格偏好，而是**旧名与 v2 已写死的文档冲突**。",
+    "context.received → context.resolved": "v2 无探针（`ADR-0003` 决策 2），旧 payload 的 `title` / `chars` / `formula_count` / `frame_count` / `outline` 是探针页面字段；新 payload 表达的是 F1 的「上下文标识 + 无上下文时显式降级」。",
+    "agent.* → node.*": "`docs/03 §7①` 的扩展点叫「新增一个**图节点**」；且 F13（协作可见）是 MAY、**未排期** —— 用 `agent` 会让契约承诺一个未排期的能力。",
+    "run.end → done": "`docs/02 §6.5-2` 明写「终帧必须显式（**`done`** 或 `error`）」—— 文档已经用了 `done`，契约必须跟文档，而不是相反。"
+  },
+  "x-frame-conventions": {
+    "description": "帧级约定（旧仓 INDEX §4.1 的适配版）。",
+    "transport": "一条事件一行：`data: <json>` + `\\n\\n` 结尾",
+    "encoding": "UTF-8，中文**不转义**（`ensure_ascii=False`）",
+    "seq": "单调递增；**只用于去重**，不承担断流续传（`docs/02 §4.2-1`）",
+    "terminal": "最后一帧**必须**显式：`done` 或 `error`（`docs/02 §6.5-2`）",
+    "unknown_type": "前端**必须静默忽略**未知 `type` —— 这是「只增不改」成立的前提",
+    "optional_fields": "可选字段**省略**而不是置 `null`；类型里显式含 `null` 的字段（如 `cite_id`）才允许 `null`",
+    "client_disconnect": "客户端断开 ⇒ 图必须取消（否则一次刷新会留下还在跑的后台图，把单 worker 拖死）"
+  },
+  "x-type-count": {
+    "description": "★ 机器可读的类型计数（`docs/04 §7` 校验③ 用它断言「恰好 14 类」）。",
+    "value": 14
+  },
+  "examples": [
+    {
+      "seq": 1,
+      "type": "run.start",
+      "ts": 1789543900.12,
+      "payload": {
+        "run_id": "run_5f2c9a1b",
+        "session_id": "ses_20260916_a1b2c3",
+        "query": "这道贝叶斯题怎么算？"
+      }
+    },
+    {
+      "seq": 3,
+      "type": "artifact",
+      "ts": 1789543902.4,
+      "payload": {
+        "kind": "solution",
+        "payload": {
+          "title": "贝叶斯公式正向代入",
+          "steps": [
+            {
+              "explanation": "先写出条件概率的定义式。",
+              "formula": "P(A|B)=\\frac{P(A\\cap B)}{P(B)}"
+            },
+            {
+              "explanation": "用乘法公式把分子展开。",
+              "formula": "P(A\\cap B)=P(B|A)P(A)"
+            },
+            {
+              "explanation": "代入题给数值并化简。",
+              "formula": "P(A|B)=\\frac{0.9\\times 0.01}{0.1}=0.09"
+            }
+          ],
+          "cite_id": "probability-3-2"
+        }
+      }
+    },
+    {
+      "seq": 5,
+      "type": "verification.report",
+      "ts": 1789543903.1,
+      "payload": {
+        "ok": true,
+        "summary": "数值重算一致，级别 A。",
+        "report": {
+          "level": "A",
+          "levelLabel": "数值可完全验证",
+          "passed": true,
+          "confidence": 1.0,
+          "checks": [
+            {
+              "name": "数值重算",
+              "passed": true,
+              "method": "sympy_recompute",
+              "detail": "SymPy 独立重算结果一致。"
+            }
+          ],
+          "uncertain": false,
+          "missing_methods": [],
+          "recomputed": false
+        }
+      }
+    },
+    {
+      "seq": 6,
+      "type": "done",
+      "ts": 1789543903.2,
+      "payload": {
+        "status": "ok",
+        "final_answer": "答案是 0.09。"
+      }
+    },
+    {
+      "seq": 7,
+      "type": "error",
+      "ts": 1789543903.3,
+      "payload": {
+        "code": "server_busy",
+        "message": "当前同时答题的同学较多，请稍后重试"
+      }
+    }
+  ]
+}

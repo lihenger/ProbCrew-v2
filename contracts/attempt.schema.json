@@ -1,0 +1,338 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/attempt.schema.json",
+  "title": "作答记录（Attempt · API 视图）",
+  "description": "一次作答的**对外视图**，以及判定接口（`POST /api/practice/grade`）的响应形状。★ **视图口径（本仓约定，见 `docs/04 §4`）**：契约只描述**跨端可见的对象**，**数据库行的权威是 `docs/02 §3.2`** —— 因此本文件里 `hint_used_total` **在**（它由 `COUNT(*)` 派生、**不落列**），而 `user_id` / `student_id` **不在**（学生侧不需要；管理页是**按学生逐人查看**，见 `docs/02 §7.1` 的 `#/admin?tab=students&user=usr_xxx`）。★ 本文件是**重写**（`ADR-0003` 决策 1 的搬运清单里只有 `user.schema.json`），依据是 `docs/01` F7 的「记录必须含什么」与 `docs/02 §3.2` / `§3.4` 的字段级设计。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "attempt_id",
+    "item_id",
+    "session_id",
+    "kc_ids",
+    "correct",
+    "score",
+    "answer_raw",
+    "expected",
+    "hint_used",
+    "hint_used_total",
+    "duration_ms",
+    "attempt_no",
+    "source",
+    "grader",
+    "created_at",
+    "asset_version",
+    "mistake_id",
+    "mistake_matched"
+  ],
+  "properties": {
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "作答记录主键。★ 服务端生成，**格式未在 `docs/02` 约定** —— 因此本契约只给长度上界，不写 pattern（不发明一个没人约定的形状）。"
+    },
+    "item_id": {
+      "type": "string",
+      "pattern": "^prob_[a-z0-9_]+$",
+      "maxLength": 64,
+      "description": "指向题库条目。ID 规则见 `docs/02 §2.2`（`prob_<slug>`，**被历史记录引用 ⇒ 改含义只能新增 ID**）。"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "同一浏览器会话标识。用途只有一处：**「本会话用了 N 次提示」**（F14）。"
+    },
+    "kc_ids": {
+      "type": "array",
+      "minItems": 1,
+      "description": "本题考的知识点。★ **`minItems: 1` 是 F19「作答记录知识点标注非空」在契约层的断言** —— 一层在题库加载时校验、一层在契约、一层在写入函数（三层都要有断言，任一层缺了都会出现「表面合规」）。ID 规则见 `docs/02 §2.2`（`kc_<slug>`）。",
+      "items": {
+        "type": "string",
+        "pattern": "^kc_[a-z0-9_]+$",
+        "maxLength": 64
+      }
+    },
+    "correct": {
+      "type": ["boolean", "null"],
+      "description": "★ **`null` = 未判定**（不可判定题目，`docs/02 §4.3-②` 与 `§8-18`），**不是「错」**。★ 类型映射（见 `docs/04 §4`）：库里是 `INTEGER`（0/1/NULL），**接口层是 `boolean | null`** —— 契约描述的是视图，不是表。"
+    },
+    "score": {
+      "type": ["number", "null"],
+      "description": "应用题的部分分（`docs/02 §6` 的判定准确率对 `answer_kind=text` 允许表达误差）；未判定时为 null。"
+    },
+    "answer_raw": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "学生原文。★ 上界 200 与 `docs/02 §6.1` 的 R-A 表一致（旧仓 P0 事故：判定接口无上界，被喂 100k 位数字）。"
+    },
+    "answer_normalized": {
+      "type": "string",
+      "maxLength": 400,
+      "description": "归一化后的答案（`docs/02 §4.3-③`）。**用途是判定可复算**（F4），**前端不渲染**；因此它进视图是为了评测运行器，不是为了页面。"
+    },
+    "expected": {
+      "type": "string",
+      "maxLength": 400,
+      "description": "★ **标准答案快照**（F7 明写）。它必须在**作答当时**落库：题库改版后，「当时的标准答案」要能被解释，否则历史记录无法复核。"
+    },
+    "hint_used": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "★ **本次会话**用了多少次提示（作用域 = `user,item,session`）。由**服务端**从提示流水计数，**客户端上报值一律忽略**（否则改一下 URL 或直接构造请求即可绕过，`docs/01` §5 的伦理约束就没有执行载体）。"
+    },
+    "hint_used_total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "★ **跨会话累计**（作用域 = `user,item`），供错题本显示「这道题一共提示了 N 次」。★ **它是派生视图字段，不是数据库列**（由 `SELECT COUNT(*) FROM student_hint_log WHERE user_id=? AND item_id=?` 得出，`docs/02 §3.2`）—— 这正是本契约采用「视图口径」的直接好处：一个不落列的东西也能被契约定义。"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "★ **客户端自陈值，不参与任何验收**（`docs/01` F7 已记账）。要拿到可信用时需要一张「作答开始」记录表，v2 **刻意不做** —— 本字段保留是为了显示与排障，**不得**用它做统计口径。"
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "第几次做这道题。★ **由服务端按 `(user_id, item_id)` 历史计数 +1 得出**，不接受客户端上报；并发下由 `UNIQUE(user_id, item_id, attempt_no)` 兜底（冲突时重派生一次，仍冲突则 409）。"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["practice", "wrong_review"],
+      "description": "来源：`practice` = 练习，`wrong_review` = 错题重做。★ **新增取值属兼容变更**（只增不改）—— 例如将来加 `exam` 只需加枚举值。"
+    },
+    "grader": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "判定者。★ **`not_gradable`** 表示「该题不可判定」，与 `correct: null` **同时出现**（`docs/02 §8-18`）。★ 本字段**不写 enum**：`docs/02` 只约定了这一个新增取值，其余取值集合没有权威定义 —— 与其发明一个枚举，不如如实只给长度上界。"
+    },
+    "created_at": {
+      "type": "number",
+      "description": "作答时刻（epoch 秒，float）。★ 它是**本表的时间字段**：错题本 / 进度的分页排序键（`docs/02 §3.5` · `§6.4` 的稳定序 = `created_at DESC, id DESC`）。"
+    },
+    "asset_version": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$",
+      "description": "★ **作答当时的 `content_rev`**（F7 要求「标准答案快照 + 资产版本号」）。它就是 `docs/02 §3.3` 规则 2 那条算法的输出：`sha256(\"dag=..;formula=..;mistakes=..;problems=..;types=..\")[:12]`。★ **反解链**：`content_rev` → 在 `git log` 里找**计算出的 `content_rev` 相同**的那一版 `content/MANIFEST.json` → 五类资产各自的 `rev` → 升该 rev 的那次提交。"
+    },
+    "mistake_id": {
+      "type": ["string", "null"],
+      "pattern": "^mp_[a-z0-9_]+$",
+      "maxLength": 64,
+      "description": "★ **这次错误命中的错因条目 ID**（`docs/02 §2.2` 的 `mp_<slug>`）。**语义写死**：`null` = 判定为正确、或未判定。★ 它必须落库的原因：否则「告诉你踩了哪个坑」这条产品主张**只在当次响应里成立** —— 一周后错题本说不出「你当时是把方向搞反了」。"
+    },
+    "mistake_matched": {
+      "type": "boolean",
+      "description": "★ `true` = 识别了错因（此时 `mistake_id` 非空）· `false` = **如实未识别**（`mistake_id` 为 null）。它把「未识别」与「没匹配上」区分开，是 F5「**不得编造错因**」的机器可读形式。"
+    }
+  },
+  "definitions": {
+    "solution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps", "explanation"],
+      "description": "★ **刷题链的解析出口**。`docs/02 §4.3-③` 与 `§5.2` 写死「**完整解析只在 `grade` 之后可取**」—— 本定义就是那个出口：它**只出现在 `gradeResult` 里**，因此「提交前不给解析」从**前端纪律**变成了**接口事实**（提示接口的响应里根本没有这个字段）。",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "description": "解析步骤。★ 每步必须含**说明与式子两字段且都非空**（`docs/01` F2 的结构断言；契约把它们命名为 `explanation` / `formula` —— 文档里的「说明 / 式子」是中文简称）。★ 本处只要求 `minItems: 1`（结构非空）；**「solve 类解答步骤数 ≥ 3」由 F2 断言，其落点是答疑链的 `artifact(kind=solution)`**（`docs/02 §4.2-7`），不是刷题链的解析。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["explanation", "formula"],
+            "properties": {
+              "explanation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "formula": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              }
+            }
+          }
+        },
+        "cite_id": {
+          "type": ["string", "null"],
+          "maxLength": 64,
+          "description": "教材出处（F10 的机器可读标识 `<教材>-<章>-<节>`）。★ **无命中时必须是 `null` 而不是编造** —— 缓存缺失时如实说明「出处暂不可用」。"
+        },
+        "explanation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "description": "整体讲解（非空）。"
+        }
+      }
+    },
+    "gradeResult": {
+      "description": "`POST /api/practice/grade` 的响应。★ 用 `oneOf` **按 `graded` 分两支**，因为两条分支的字段集**本来就不同**：可判定时才有对错与错因；不可判定时只有原因与说明（`docs/02 §4.3-②` · `§8-18`）。把两支硬塞进一个形状，会让前端无法区分「correct 为 null 因为未判定」与「correct 忘了发」。",
+      "oneOf": [
+        {
+          "title": "可判定",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "graded",
+            "correct",
+            "score",
+            "mistake_id",
+            "mistake_matched",
+            "hint_used",
+            "attempt_no",
+            "solution"
+          ],
+          "properties": {
+            "graded": {
+              "type": "boolean",
+              "const": true
+            },
+            "correct": {
+              "type": "boolean"
+            },
+            "score": {
+              "type": ["number", "null"]
+            },
+            "mistake_id": {
+              "type": ["string", "null"],
+              "pattern": "^mp_[a-z0-9_]+$"
+            },
+            "mistake_matched": {
+              "type": "boolean"
+            },
+            "hint_used": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "attempt_no": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "solution": {
+              "$ref": "#/definitions/solution"
+            }
+          }
+        },
+        {
+          "title": "不可判定",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["graded", "reason", "message", "correct", "grader", "solution"],
+          "properties": {
+            "graded": {
+              "type": "boolean",
+              "const": false
+            },
+            "reason": {
+              "type": "string",
+              "const": "not_gradable"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "给人看的说明（如「该题需人工判定」）。"
+            },
+            "correct": {
+              "type": "null",
+              "description": "★ **恒为 null**（未判定）—— 不是 false。"
+            },
+            "grader": {
+              "type": "string",
+              "const": "not_gradable"
+            },
+            "solution": {
+              "type": "null",
+              "description": "★ **恒为 null**：这道题没有可供机判的解析，因此**不得**借这条分支把解析提前发出去。"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-view-vs-row": {
+    "description": "★ 视图与数据库行的差异，逐条登记（`docs/04 §4` 的视图口径在本文件的具体落地）。**行的权威是 `docs/02 §3.2`，本文件不重复它的义务。**",
+    "view_only": {
+      "hint_used_total": "派生值（COUNT(*)，不落列）—— 只在视图里存在"
+    },
+    "row_only": {
+      "user_id": "学生侧契约不需要；管理页按学生逐人查看",
+      "student_id": "**已删除**（v2 是新库、不迁旧数据，docs/02 §3.2）"
+    },
+    "type_mapping": {
+      "correct": "INTEGER 0/1/NULL → boolean | null",
+      "kc_ids": "TEXT(JSON) → array，且 **minItems: 1**（F19）",
+      "session_id · item_id · mistake_id": "TEXT → string（附 ID 规则的 pattern）"
+    }
+  },
+  "examples": [
+    {
+      "attempt_id": "att_7f3a91c2d4e5",
+      "item_id": "prob_bayes_0012",
+      "session_id": "ses_20260916_a1b2c3",
+      "kc_ids": ["kc_bayes", "kc_conditional_prob"],
+      "correct": true,
+      "score": 1.0,
+      "answer_raw": "0.42",
+      "answer_normalized": "0.42",
+      "expected": "0.42",
+      "hint_used": 0,
+      "hint_used_total": 2,
+      "duration_ms": 48120,
+      "attempt_no": 3,
+      "source": "wrong_review",
+      "grader": "deterministic",
+      "created_at": 1789543900.12,
+      "asset_version": "9c1f4a77b2e0",
+      "mistake_id": null,
+      "mistake_matched": false
+    },
+    {
+      "attempt_id": "att_11aa22bb33cc",
+      "item_id": "prob_bayes_0012",
+      "session_id": "ses_20260916_a1b2c3",
+      "kc_ids": ["kc_bayes"],
+      "correct": false,
+      "score": 0.0,
+      "answer_raw": "P(B|A)",
+      "answer_normalized": "p(b|a)",
+      "expected": "P(A|B)",
+      "hint_used": 2,
+      "hint_used_total": 4,
+      "duration_ms": 96000,
+      "attempt_no": 4,
+      "source": "practice",
+      "grader": "deterministic",
+      "created_at": 1789544020.5,
+      "asset_version": "9c1f4a77b2e0",
+      "mistake_id": "mp_direction_reversed",
+      "mistake_matched": true
+    },
+    {
+      "attempt_id": "att_99zz88yy77xx",
+      "item_id": "prob_proof_0003",
+      "session_id": "ses_20260916_a1b2c3",
+      "kc_ids": ["kc_random_variable"],
+      "correct": null,
+      "score": null,
+      "answer_raw": "见附纸",
+      "expected": "（需人工判定）",
+      "hint_used": 1,
+      "hint_used_total": 1,
+      "duration_ms": 300000,
+      "attempt_no": 1,
+      "source": "practice",
+      "grader": "not_gradable",
+      "created_at": 1789544100.0,
+      "asset_version": "9c1f4a77b2e0",
+      "mistake_id": null,
+      "mistake_matched": false
+    }
+  ]
+}

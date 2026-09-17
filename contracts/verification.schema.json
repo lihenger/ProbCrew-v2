@@ -1,0 +1,247 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://probcrew.local/contracts/verification.schema.json",
+  "title": "验证报告（VerificationReport）",
+  "description": "「这条解答验证到了什么程度」的唯一形状。它是 **N1（正确性可验证）** 与 **N2（诚实）** 的落点：**每条解答必带**（F3「无标签不出结果」），且前端必须真的渲染它。★ 本文件是**重写**（`ADR-0003` 决策 1 的搬运清单里只有 `user.schema.json`，其余属「契约层其余部分・重写」；旧仓同名文件仅作参考），依据是 `docs/02 §4.4` 的**验证判定表**。★ 三条 v2 新增字段（`uncertain` · `missing_methods` · `recomputed`）不是锦上添花：没有它们，`docs/02 §4.4` 的三条出口（重算 · 手段缺失可见化 · 标 uncertain）**都会退化回一句无法核对的话**。",
+  "version": "v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "level",
+    "levelLabel",
+    "passed",
+    "confidence",
+    "checks",
+    "uncertain",
+    "missing_methods",
+    "recomputed"
+  ],
+  "properties": {
+    "level": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D"],
+      "must_render": true,
+      "description": "验证级别。A = 纯数值、可完全验证（需 `sympy_recompute`）；B = 符号可强验证（需 `symbolic_equivalence`）；C = 应用题、可交叉验证（需 `cross_check` 或 `unit_check`）；D = 证明题 / 开放题，**不做承诺**（无条件可达，是兜底级）。★ **级别不得超过 `checks` 里实际出现的手段所允许的上限**（手段封顶）—— 这是「一致率 100%」可被机器断言的机制。★ `must_render: true`：后端发了前端不看等于没发（F3 · `docs/02 §1.6` 的 R-I）。"
+    },
+    "levelLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "must_render": true,
+      "description": "级别**给人看的中文名**（如「符号可强验证」）。学生看不懂 A/B/C/D，因此标签必须与 `level` 一并渲染，且两者不得互相矛盾。"
+    },
+    "passed": {
+      "type": "boolean",
+      "description": "**已执行**的检查是否全部通过。★ 注意它**不表示「验证充分」**：一个只跑了 `heuristic` 的报告也可以 `passed: true`，但它的 `level` 只能是 D —— 「跑了流程」与「验证到了」是两件事，旧仓把前者当成前者的证据，于是级别恒为 D 却一路绿灯。"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "置信度。★ **必须 `≤ cap(level)`**（上限表见 `x-cap-by-level`）：A 级通过可达 1.0 · B 级 ≤ 0.90 · C 级即使全通过也不应高于 0.85 · D 级 ≤ 0.4。"
+    },
+    "checks": {
+      "type": "array",
+      "description": "逐项检查。**通过也要写**（写清楚「验证了什么」），失败更要写。★ `checks` 里出现的手段**决定 `level` 的上限**：没有数值重算就不可能到 A 级，没有符号等价就不可能到 B 级。",
+      "items": {
+        "$ref": "#/definitions/check"
+      }
+    },
+    "uncertain": {
+      "type": "boolean",
+      "description": "★ **v2 新增**。「**重算一次后仍不通过**」时置位 —— 与 `level: \"D\"` **同时出现**，且此时事件流必须**显式告知**（附哪一项检查没通过，`docs/02 §4.2-4`）。★ 为什么它必须是一个字段而不是一句文案：`docs/02 §9.1` 的**解答级注入集**门禁断言的就是它（「被标注存疑或降级」）—— 没有这个布尔值，注入集只能断言「级别被降」，而级别本来就会被手段封顶，门禁会**平凡通过**。"
+    },
+    "missing_methods": {
+      "type": "array",
+      "description": "★ **v2 新增**：**该解答本该跑到、但实际未执行的手段**（`docs/02 §4.4②`）。★ 它把「走了流程却一步真验证都没做」**可见化** —— 旧仓级别恒为 D 的根因正是所有手段都缺失，而报告里没有任何字段说过这件事。未执行为空数组（**不得为 null**）。",
+      "items": {
+        "type": "string",
+        "enum": ["sympy_recompute", "symbolic_equivalence", "cross_check", "unit_check"]
+      }
+    },
+    "recomputed": {
+      "type": "boolean",
+      "description": "★ **v2 新增**：本次解答是否**因为检查不通过而重算过一次**（`docs/02 §4.4③`）。★ 重算后即使通过了也必须如实记为 true —— 否则「走了重算流程」又会变成一句无法核对的话，而它恰恰是 N1 最容易被动摇的地方。上限是 **1 次**（重算 = **换一条策略**，不是同一次调用的重试采样）。"
+    },
+    "disagreements": {
+      "type": "array",
+      "description": "多路求解之间的分歧点（旧仓字段，保留为可选）。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unsupported": {
+      "type": "array",
+      "description": "无法验证的部分（旧仓字段，保留为可选）—— 如实说明「这一块我没验」，比笼统说「已校验」诚实。",
+      "items": {
+        "type": "string"
+      }
+    },
+    "duration_ms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "验证耗时（毫秒）。"
+    }
+  },
+  "definitions": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "passed", "method"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "检查项中文名，会直接展示给用户（如「数值重算」「符号等价性」「多路一致性」）。"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "sympy_recompute",
+            "symbolic_equivalence",
+            "cross_check",
+            "unit_check",
+            "heuristic"
+          ],
+          "description": "用的什么手段 —— **它决定了这条检查有多可信**。★ **只有前四项能抬高 `level`**（与 `docs/02 §4.4①` 的可达条件一一对应）；`heuristic` 是**兜底手段，不抬高 level**，因此一个只含 `heuristic` 的报告 `level` 落到 D。★ 旧仓枚举里的 `constraint` / `multi_path` / `back_substitute` / `grounding` **不搬运**：它们不在手段封顶表里，无法参与级别判定，收进来只会让「哪些手段算数」变成一句需要解释的话。（与 `error.schema.json` 不收录 `model_unavailable` 同一口径：**从未在 v2 发布过的取值不进枚举**。）"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "检查说明。通过也要写，失败更要写。"
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "证据。失败时这里是**定位问题的关键**。",
+          "properties": {
+            "expected": {
+              "type": "string",
+              "description": "期望值（LaTeX 或数值）。"
+            },
+            "actual": {
+              "type": "string",
+              "description": "实际值。"
+            },
+            "step_index": {
+              "type": "integer",
+              "description": "出问题的是第几步（若适用）。"
+            },
+            "counterexample": {
+              "type": "string",
+              "description": "反例（若适用）。"
+            }
+          }
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "x-cap-by-level": {
+    "description": "`cap(level)` —— 置信度上限表（`docs/02 §4.4①`）。★ **B 级在这里才第一次被定义**：旧仓 schema 只定义了 A / C / D，**B 没有上限** ⇒ 「`conf ≤ cap(level)` 全量断言」此前**无法执行**（一条跑不起来的 MUST 断言）。取值理由：B 必须**低于 A 的 1.0**（符号等价性判定本身有实现风险，弱于数值重算），且**高于 C 的 0.85**（符号等价是强验证，不是交叉印证）—— 0.90 使三档严格单调。",
+    "A": 1.0,
+    "B": 0.9,
+    "C": 0.85,
+    "D": 0.4
+  },
+  "x-level-reachability": {
+    "description": "级别 ↔ 手段的**可达条件**（`docs/02 §4.4①` 的机器可读镜像）。判定规则：`level` 必须 ≤ 「`checks` 里实际出现的手段所允许的最高级别」。",
+    "A": {
+      "requires_any": ["sympy_recompute"]
+    },
+    "B": {
+      "requires_any": ["symbolic_equivalence"]
+    },
+    "C": {
+      "requires_any": ["cross_check", "unit_check"]
+    },
+    "D": {
+      "requires_any": []
+    }
+  },
+  "x-invariants": {
+    "description": "★ draft-07 **表达不了算术**，因此下面两条**不假装 schema 能校验**，而是写成机器可读的断言说明，由 `docs/04 §7` 的校验实现执行。",
+    "rules": [
+      "level ≤ 手段允许的上限（读 x-level-reachability 与 checks[].method）—— 挡住「一个手段都没跑却报高级别」",
+      "confidence ≤ cap(level)（读 x-cap-by-level）—— 挡住「高级别配低置信」",
+      "uncertain = true ⇒ level = \"D\" —— 重算后仍不通过必须降级，不得只标 uncertain 而保留级别",
+      "missing_methods 非空 ⇒ level ≤ \"C\" —— 手段缺失时不得声称 A / B 级"
+    ]
+  },
+  "examples": [
+    {
+      "level": "A",
+      "levelLabel": "数值可完全验证",
+      "passed": true,
+      "confidence": 1.0,
+      "checks": [
+        {
+          "name": "数值重算",
+          "passed": true,
+          "method": "sympy_recompute",
+          "detail": "用 SymPy 独立重算最终表达式，结果与解答一致。",
+          "duration_ms": 42.5
+        }
+      ],
+      "uncertain": false,
+      "missing_methods": [],
+      "recomputed": false,
+      "duration_ms": 61.2
+    },
+    {
+      "level": "D",
+      "levelLabel": "证明题/开放题，不做承诺",
+      "passed": false,
+      "confidence": 0.3,
+      "checks": [
+        {
+          "name": "启发式检查",
+          "passed": false,
+          "method": "heuristic",
+          "detail": "重算一次后仍与检查结果不一致。",
+          "evidence": {
+            "expected": "0.42",
+            "actual": "0.58",
+            "step_index": 2
+          }
+        }
+      ],
+      "uncertain": true,
+      "missing_methods": ["sympy_recompute", "symbolic_equivalence"],
+      "recomputed": true,
+      "duration_ms": 812.0
+    },
+    {
+      "level": "C",
+      "levelLabel": "应用题，可交叉验证",
+      "passed": true,
+      "confidence": 0.85,
+      "checks": [
+        {
+          "name": "量纲检查",
+          "passed": true,
+          "method": "unit_check",
+          "detail": "两边量纲一致。"
+        },
+        {
+          "name": "多路一致性",
+          "passed": true,
+          "method": "cross_check",
+          "detail": "第二条路径给出同一结论。"
+        }
+      ],
+      "uncertain": false,
+      "missing_methods": ["sympy_recompute"],
+      "recomputed": true,
+      "unsupported": ["题目要求的物理解释是否合理"],
+      "duration_ms": 233.4
+    }
+  ]
+}
