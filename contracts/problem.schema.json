@@ -69,7 +69,7 @@
       "stem": "某随机变量 X 的密度函数为 f(x)=2x（0<x<1），求 E(X)。",
       "kc_ids": ["kc_random_variable", "kc_expectation"],
       "pt_id": "pt_expectation_integral",
-      "answer_kind": "text",
+      "answer_kind": "value",
       "difficulty": 2
     }
   ]
