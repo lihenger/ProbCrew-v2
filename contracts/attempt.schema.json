@@ -279,9 +279,9 @@
       "kc_ids": ["kc_bayes", "kc_conditional_prob"],
       "correct": true,
       "score": 1.0,
-      "answer_raw": "0.42",
-      "answer_normalized": "0.42",
-      "expected": "0.42",
+      "answer_raw": "0.0833",
+      "answer_normalized": "0.0833",
+      "expected": "0.0833",
       "hint_used": 0,
       "hint_used_total": 2,
       "duration_ms": 48120,
@@ -289,7 +289,7 @@
       "source": "wrong_review",
       "grader": "deterministic",
       "created_at": 1789543900.12,
-      "asset_version": "9c1f4a77b2e0",
+      "asset_version": "5c6c6ae242d6",
       "mistake_id": null,
       "mistake_matched": false
     },
@@ -310,7 +310,7 @@
       "source": "practice",
       "grader": "deterministic",
       "created_at": 1789544020.5,
-      "asset_version": "9c1f4a77b2e0",
+      "asset_version": "5c6c6ae242d6",
       "mistake_id": "mp_direction_reversed",
       "mistake_matched": true
     },
@@ -330,7 +330,7 @@
       "source": "practice",
       "grader": "not_gradable",
       "created_at": 1789544100.0,
-      "asset_version": "9c1f4a77b2e0",
+      "asset_version": "5c6c6ae242d6",
       "mistake_id": null,
       "mistake_matched": false
     }

@@ -840,7 +840,7 @@
             },
             {
               "explanation": "代入题给数值并化简。",
-              "formula": "P(A|B)=\\frac{0.9\\times 0.01}{0.1}=0.09"
+              "formula": "P(A|B)=\\frac{0.9\\times 0.01}{0.9\\times 0.01+0.1\\times 0.99}=\\frac{0.009}{0.108}=0.0833"
             }
           ],
           "cite_id": "probability-3-2"
@@ -879,7 +879,7 @@
       "ts": 1789543903.2,
       "payload": {
         "status": "ok",
-        "final_answer": "答案是 0.09。"
+        "final_answer": "答案是 0.0833。"
       }
     },
     {

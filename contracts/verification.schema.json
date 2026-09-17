@@ -207,7 +207,7 @@
           "method": "heuristic",
           "detail": "重算一次后仍与检查结果不一致。",
           "evidence": {
-            "expected": "0.42",
+            "expected": "0.0833",
             "actual": "0.58",
             "step_index": 2
           }

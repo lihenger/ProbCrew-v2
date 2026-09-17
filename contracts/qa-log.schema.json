@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://probcrew.local/contracts/qa-log.schema.json",
   "title": "问答流水（QA Log · API 视图）",
-  "description": "`student_qa_log` 的条目视图，供 **`GET /api/me/qa`（我的问答历史）** 使用（该端点由 2026-09-16 裁定新增，**待补入 `docs/02 §6.1`** —— 见 `docs/04 §3` / `§9` 缺口 1）。★ 本契约是「**同一份数据有两个属性**」的那一个例子：它既是 L2 学生数据，**又是唯一会被发往第三方的表**（`docs/02 §1.3`）。因此它同时承担两件事：① 让「我的问答历史」可读（`docs/02 §3.4` 说它支撑「F7 的**问答侧**」）；② 让**去向可查**有据 —— `egress` / `provider` / `model` 三个字段就是 N16 验收②（设置页展示的去向与 `SELECT DISTINCT egress` 一致）的读对象。",
+  "description": "`student_qa_log` 的条目视图，供 **`GET /api/me/qa`（我的问答历史）** 使用（该端点由 2026-09-16 裁定新增，**已于 2026-09-17 补入 `docs/02 §6.1`** —— 见 `docs/04 §3` / `§9` 缺口 1。★ 原文写的是“待补入”，**该缺口已关闭**，2026-09-17 改正）。★ 本契约是「**同一份数据有两个属性**」的那一个例子：它既是 L2 学生数据，**又是唯一会被发往第三方的表**（`docs/02 §1.3`）。因此它同时承担两件事：① 让「我的问答历史」可读（`docs/02 §3.4` 说它支撑「F7 的**问答侧**」）；② 让**去向可查**有据 —— `egress` / `provider` / `model` 三个字段就是 N16 验收②（设置页展示的去向与 `SELECT DISTINCT egress` 一致）的读对象。",
   "version": "v1.0",
   "type": "object",
   "additionalProperties": false,
@@ -61,7 +61,7 @@
     {
       "qa_id": "qa_3f9c1a2b4d5e",
       "query": "这道贝叶斯题怎么算？",
-      "answer": "答案是 0.09。先写出条件概率的定义式……",
+      "answer": "答案是 0.0833。先写出条件概率的定义式……",
       "provider": "deepseek",
       "model": "deepseek-chat",
       "egress": "remote",

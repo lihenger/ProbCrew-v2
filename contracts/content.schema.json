@@ -748,14 +748,14 @@
         "formula": "formula-2026.09.16.1",
         "types": "types-2026.09.16.1"
       },
-      "content_rev": "9c1f4a77b2e0"
+      "content_rev": "5c6c6ae242d6"
     },
     {
       "cases": [
         {
           "case_id": "s1",
           "item_id": "prob_bayes_0012",
-          "answer": "0.09",
+          "answer": "0.0833",
           "expected_conclusion": "判定为对，级别 A"
         },
         {
@@ -801,7 +801,7 @@
           {
             "prob_id": "prob_bayes_0012",
             "stem": "某病发病率 1%，检测灵敏度 90%、特异度 90%，检出阳性者患病的概率是多少？",
-            "expected": "0.09",
+            "expected": "0.0833",
             "kc_ids": [
               "kc_bayes"
             ],
