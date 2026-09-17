@@ -1,0 +1,88 @@
+# 门禁（CI）
+#
+# ★ 阶段说明：本工作流的**完整步骤在阶段 B 生效**（`docs/06 §4` 第 3 / 10 项）。
+#   阶段 A 只产出文档与契约，`scripts/verify.sh` 尚不存在 —— 因此第一个步骤是**预检**：
+#   门禁脚本不存在时**明确报告"门禁未运行"**，而不是让后续步骤以一个看不懂的
+#   "no such file" 失败。★ **这不是"静默通过"**：预检会打出 ::warning:: 并把结论
+#   写进 Job Summary，且**一旦 `scripts/verify.sh` 出现，后面所有步骤立即全量执行**。
+#
+# ★ 本工作流**不重新定义任何检查内容**：
+#   检查什么 → `docs/04 §7`（契约校验七节）· `docs/02 §1.6`（R-A…R-Q）· `docs/06 §8`（何时必须绿）
+#   未产出清单 → `docs/07 §2.2`
+#
+# ★ `scripts/verify.sh` 是**唯一的门禁入口**（`docs/06 §1.2`：本地跑它就是本地门禁，
+#   接上远端它就是 CI 入口）。因此这里**不再发明** frontend_smoke.sh 一类的第二个入口 ——
+#   前端冒烟（R-F ①② · R-G · R-I）是 `verify.sh` 的一个**节**。
+
+name: 门禁
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: 门禁（文档自洽 · 契约 · 依赖方向 · 用例）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- 预检：阶段 A 与阶段 B 的分界 ----------
+      - name: 预检 · 门禁脚本是否已产出（阶段 B）
+        id: preflight
+        run: |
+          if [ -f scripts/verify.sh ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "门禁脚本存在 —— 本次执行完整门禁。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=门禁未运行::scripts/verify.sh 尚未产出（阶段 B）。本次未执行任何门禁检查 —— 见 docs/07 §2.2 的未产出清单。"
+            {
+              echo "## ⚠️ 门禁未运行"
+              echo ""
+              echo '`scripts/verify.sh` 尚未产出（**阶段 B**，见 `docs/06 §4` 第 3 / 10 项）。'
+              echo ""
+              echo "本次推送**没有执行任何门禁检查** —— 这不是「通过」，是「还没开始」。"
+              echo "未产出清单见 `docs/07 §2.2`。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 安装 Python
+        if: steps.preflight.outputs.ready == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        if: steps.preflight.outputs.ready == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt 尚未产出（阶段 B）—— 见 docs/07 §2.2"
+          fi
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+
+      # ---------- 唯一的门禁入口 ----------
+      # 节次与判据：docs/04 §7（契约七节）· docs/02 §1.6（R-A…R-Q）· docs/06 §8（何时必须绿）
+      # 其中 R-P（文档自洽）由 docs/02 §1.6 点名要求"docs/06（A4）必须把它列为门禁项" ——
+      # 即 docs/06 §3 的阶段门 A，本节负责在每次推送时重跑它（docs/06 §1.2：门只增不改）。
+      - name: ★ 门禁（R-A · R-B · R-P · 契约校验 · 依赖方向 · 前端冒烟）
+        if: steps.preflight.outputs.ready == 'true'
+        run: bash scripts/verify.sh
+
+      - name: 用例（backend/tests）
+        if: steps.preflight.outputs.ready == 'true'
+        run: python -m pytest -q backend/tests
+
+      # ---------- 阶段 C 的动作不在这里 ----------
+      # ★ 冻结正式集的盲测**必须由非实现者手工执行**，且正式集**不入仓**
+      #   （docs/01 §6 的三条独立约束 · docs/06 §5 第 2 项）。
+      #   把它接进 CI 等于让实现人拿到题 —— 盲测失效。因此**刻意不接**。
