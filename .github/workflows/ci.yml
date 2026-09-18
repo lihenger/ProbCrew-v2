@@ -29,7 +29,12 @@ jobs:
     name: 门禁（文档自洽 · 契约 · 依赖方向 · 用例）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # ★ 版本按 GitHub 官方 release 实测取**最新主版本**（2026-09-18 查 API：checkout v7.0.1 · setup-python v7.0.0）。
+      #   为什么现在动它：运行 #1 打出一条 warning —— `actions/checkout@v4` 以 Node 20 为目标，
+      #   而 runner 已强制跑在 Node 24 上（弃用）。★ 这条警告**每次都出现**，会把预检那条真正重要的
+      #   「门禁未运行」warning 淹掉 —— 本仓的门禁不接受"静默通过"，也不该让警告退化成噪音。
+      #   ★ 本仓的用法是**零输入**，行为面最小；★ 但这一次改动**未经过 CI 实跑验证**，下一次推送才验证它。
+      - uses: actions/checkout@v7
 
       # ---------- 预检：阶段 A 与阶段 B 的分界 ----------
       - name: 预检 · 门禁脚本是否已产出（阶段 B）
@@ -53,7 +58,7 @@ jobs:
 
       - name: 安装 Python
         if: steps.preflight.outputs.ready == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
