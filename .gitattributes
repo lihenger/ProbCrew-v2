@@ -1,0 +1,38 @@
+# 行尾与文件类型（★ 这就是本文件存在的理由）
+#
+# 本仓的整套质量体系挂在一个 shell 脚本上 —— `scripts/verify.sh` 是**唯一的门禁入口**
+# （`docs/06 §1.2`）。而 shell 脚本一旦带上 CRLF，**门禁会直接跑不起来**：
+#   · 直接执行：`/bin/sh^M: bad interpreter: No such file or directory`
+#   · `bash script.sh`：`syntax error: unexpected end of file`（`set -euo pipefail` + `if` 条件行尤其必现）
+# 两种都在 macOS 上实测复现过（2026-09-17）。四人小组里只要有一台 Windows，这个文件就能挡住它。
+# 约定与理由见 `docs/05 §7.2`；`.gitattributes` / `.gitignore` 的归属见 `docs/05 §3`。
+
+* text=auto eol=lf
+
+# 源码与脚本：一律 LF（在 Windows 上检出也是 LF，避免"门禁在别人机器上突然不跑"）
+*.sh     text eol=lf
+*.py     text eol=lf
+*.js     text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+*.json   text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+*.toml   text eol=lf
+*.cfg    text eol=lf
+*.txt    text eol=lf
+
+# 二进制：不做行尾转换、不做文本 diff 与合并（vendor 里是第三方产物，被"文本合并"即损坏）
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.pdf    binary
+*.sqlite binary
+*.db     binary
+frontend/vendor/**  binary
